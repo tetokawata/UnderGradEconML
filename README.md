@@ -14,3 +14,5 @@ Public folderから講義スライドとExampleDataをダウンロードでき�
     - [rpart関数における停止条件の設定](https://youtu.be/G6ORhWQnAr4)
     
     - [SuperLearnerを利用した(剪定ずみ)決定木/RandomForestの推定と評価](https://youtu.be/mQk5wbSeP_4)
+    
+    - [estimatrを利用したOLS推定](https://youtu.be/_rMo8KcQXqk)
