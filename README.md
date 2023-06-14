@@ -16,3 +16,8 @@ Public folderから講義スライドとExampleDataをダウンロードでき�
     - [SuperLearnerを利用した(剪定ずみ)決定木/RandomForestの推定と評価](https://youtu.be/mQk5wbSeP_4)
     
     - [estimatrを利用したOLS推定](https://youtu.be/_rMo8KcQXqk)
+    
+    - [grfを利用した条件付き平均差の推定](https://youtu.be/yU0J7mOhrq8)
+    
+    - [grfを利用したBLPの推定](https://youtu.be/-CeaWL8WNYQ)
+
