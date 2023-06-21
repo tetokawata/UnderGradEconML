@@ -17,7 +17,18 @@ Public folderから講義スライドとExampleDataをダウンロードでき�
     
     - [estimatrを利用したOLS推定](https://youtu.be/_rMo8KcQXqk)
     
+    - [SuperLearnerを利用したPartiallingOut推定](https://youtu.be/RXhlE6p-DZA)
+    
     - [grfを利用した条件付き平均差の推定](https://youtu.be/yU0J7mOhrq8)
     
     - [grfを利用したBLPの推定](https://youtu.be/-CeaWL8WNYQ)
 
+    - テキスト分析
+    
+        - [準備](https://youtu.be/y0NbV6tVcyQ)
+        
+        - [単語の出現頻度](https://youtu.be/nlOdpNotkJQ)
+        
+        - [前処理](https://youtu.be/AGL65ghiVrg)
+        
+        - [相対出現頻度](https://youtu.be/S1fDVBGWNwg)
