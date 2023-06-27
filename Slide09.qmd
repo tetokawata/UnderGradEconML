@@ -1,0 +1,341 @@
+---
+title: "効果の異質性"
+subtitle: "事例の集計"
+author: "川田恵介"
+format: 
+  revealjs:
+    html-math-method: katex
+    slide-number: true
+self-contained: true
+self-contained-math: true
+execute: 
+  warning: false
+  message: false
+  eval: true
+  echo: false
+---
+
+
+# テキストデータ
+
+```{r}
+#| label: SetUp
+
+pacman::p_load(
+  tidyverse,
+  quanteda,
+  quanteda.textstats,
+  SuperLearner)
+
+Data <- read_tsv("Data/LiteratureList.tsv") |> 
+  filter(str_sub(著者名のよみ,1,1) != "ん") |> 
+  select(
+    論文タイトル,
+    種別
+  ) |> 
+  na.omit() |> 
+  rename(
+    Title = 論文タイトル,
+    Type = 種別
+  )
+
+write_csv(Data,"Public/Text.csv")
+
+DFM <- Data |> 
+  corpus(
+  text_field = "Title") |> 
+  tokens(remove_punct = FALSE) |> 
+  tokens_select(
+    '^[０-９ぁ-んァ-ヶー一-龠]+$', 
+    valuetype = 'regex', 
+    padding = TRUE) |> 
+  tokens_remove(
+    '^[ぁ-ん]+$', 
+    valuetype = 'regex', 
+    padding = TRUE) |> 
+  dfm()
+
+Test <- DFM |> 
+  convert("data.frame") |> 
+  select(-doc_id)
+
+rpart::rpart(Data$Type ~ .,
+             Test,
+             control = rpart::rpart.control(
+               maxdepth = 2,
+               cp = 0,
+               minsplit = 1,
+               minbucket = 1
+             ))
+```
+
+## 実例
+
+- 日本 & 経済学におけるコロナ研究リスト
+
+```{r}
+Data
+```
+
+
+## テキスト分析
+
+- 事例の多くは、”テキスト”で記録されてきた
+
+    - 膨大な電子化されたテキストデータがより容易に入手可能（SNS, オンラインアンケート、口コミ評価）
+
+- テキスト分析への需要拡大
+
+    - 統計・機械学習的手法の応用が急速に進む
+
+## 例：自由記述欄
+
+- 多くの調査には、自由記述欄が含まれる
+
+    - 例：商品への感想を書いてください
+
+- Open end question（回答結果を制約しない）
+
+    - いろんな回答結果が記録できる
+
+    - 分析者が想定していない情報を得られる可能性
+
+## 例: 武蔵大学の印象
+
+```{r}
+Example <- tibble(
+  ID = c(1,2,3),
+  Text = c("キャンパスが綺麗","池袋から近い","キャンパスがおしゃれ")
+  )
+
+Example
+```
+
+## 本講義での応用
+
+- 特定のグループが使いがちな単語とは？
+
+- 予測モデル $E_P[Y|テキスト]\sim g(テキスト)$ の構築
+
+    - 機械学習に比較優位
+
+# 前処理
+
+## 復習: 母平均の推定問題
+
+- 基本: "似ている"複数の事例を集計して、 $E_P[Y|X]$ を推定したい
+
+- 予測変数 $X$ の役割 $=$ 似ている事例かどうかの判断基準
+
+    - 統計・機械学習 $=$ データから似ている度を判定する
+    
+- 伝統的な$X$ : カテゴリー/連続変数
+
+    - テキストは大きく異なる特徴を持つ
+
+## VS カテゴリー変数
+
+- 性別、国籍、学部など
+
+- カテゴリー変数 $=$ "少数"の値しかとらない
+
+    - 同じ値をとるサンプルが複数存在
+
+    - "値が同じであれば似ている"
+
+- テキスト変数 $=$ 無限大の種類がある
+
+## VS 連続変数
+
+- 年齢、身長など
+
+- 連続変数 = 同じ値をとるサンプルは極めて少数
+
+    - 値が近いかどうかは自明
+    
+- テキスト変数
+
+    - テキストが近いかどうかは自明ではない
+
+## テキスト変数の難しさ
+
+- テキストは情報が"豊富"すぎる 
+
+- 変数の値間の距離が定義できない
+
+  - 似ている文章とは？
+
+- $\rightarrow$ 何らかの単純化が必要
+
+## テキストデータを使った予測モデル構築
+
+- 予測モデル $g(X,Text)$ を構築
+
+- 合わせ技でモデル構築
+
+  - 事前に$Text$を単純化する (前処理)
+  
+  - 大量の$X$に対応した手法で推計
+
+## 前処理: Token
+
+- テキストを単語の羅列（Token化）
+
+- 日本語は単語化が難しい
+
+    - 分かち書きをしない
+
+  - quantedaパッケージを用いれば解決可能
+
+
+## 例: 武蔵大学の印象
+
+```{r}
+Example |> 
+  corpus(
+    text_field = "Text"
+    ) |> 
+  tokens()
+```
+
+## 前処理：Bag of words
+
+- Token化しただけでは、依然として、全ての事例が異なる値を有する
+
+    - さらなる単純化が必須
+    
+- 代表的な手法は、 Bag of words
+
+    - 単語の出現頻度を数える
+
+- 文脈や語順は捨象 
+
+    - 発展: N-gram, embedding
+
+## 例: 武蔵大学の印象
+
+```{r}
+Example |> 
+  corpus(
+    text_field = "Text"
+    ) |> 
+  tokens() |> 
+  dfm()
+```
+
+# 頻度分析
+
+- どのような単語が使われているか
+
+    - グループごとに集計も可能
+    
+    - テキスト分析版、記述統計分析
+
+## 全体
+
+```{r}
+TempDFM <- Data |> 
+  corpus(
+    text_field = "Title"
+    ) |> 
+  tokens() |> 
+  dfm()
+
+topfeatures(TempDFM, 20)
+```
+
+- よくわからない
+
+## グループの特徴づけ
+
+- 単純に集計すると助詞や助動詞など、"文章を特徴づける上で、そこまで重要ではない単語"が上位に来る
+
+- グループ(例: 満足度が高い VS 低い, **一般むけ** VS **専門むけ**)を特徴づける単語の探索
+
+- chi2指標: 単語がグループ間で偏りなく使用される場合に比べて、分布がどの程度偏っているのか？
+
+## 一般
+
+```{r}
+TempKeyness <- textstat_keyness(TempDFM, TempDFM$Type == "一般")
+
+head(TempKeyness, 10)
+```
+
+## 専門
+
+```{r}
+
+TempKeyness <- textstat_keyness(TempDFM, TempDFM$Type == "専門")
+
+head(TempKeyness, 10)
+```
+
+
+# OLSによる予測モデル
+
+- $E_P[Y|X,テキスト]\sim g(X,テキスト)$ を推定する
+
+- 代表的な推定方法が、一般に機能しない
+
+    - テキスト分析が難しかった理由
+
+## OLSの前提条件
+
+- $Y_i\sim \beta_0 + .. + \beta_LX_L$
+
+    - 経験則として、 事例数 $> 3\times$ 変数数 であれば、ある程度の推定精度を期待できる
+
+- 変数数 $>$ 事例数であれば、原理的に推定できない
+
+    - テキスト分析ではしばしば発生する
+
+## 実例
+
+- $Y= 1$ 一般むけの文章, $Y=0$ 専門家向けの文章
+
+- $X=$ 論文のタイトル
+
+## 実例
+
+```{r}
+X <- Data |> 
+  corpus(
+    text_field = "Title"
+    ) |> 
+  tokens() |> 
+  dfm() |> 
+  dfm_trim(
+    min_docfreq = 3
+  ) |> 
+  convert(
+    "data.frame"
+  )
+
+X <- select(X, -doc_id)
+
+names(X) <- str_c("Word",1:ncol(X))
+
+Y <- if_else(Data$Type == "一般",1,0)
+
+Fit <- SuperLearner(
+  Y = Y,
+  X = X,
+  SL.library = list(
+    "SL.lm",
+    "SL.mean",
+    "SL.ranger",
+    "SL.glmnet"
+  )
+)
+
+Fit
+```
+
+## まとめ
+
+- カジュアルなグループの特徴づけの手法がたくさんある
+
+    - 単純な集計に比べれば、有意な情報が多い
+    
+- OLSは予測モデル構築の役に立たない

@@ -1,0 +1,313 @@
+---
+title: "効果の異質性"
+subtitle: "事例の集計"
+author: "川田恵介"
+format: 
+  revealjs:
+    html-math-method: katex
+    slide-number: true
+self-contained: true
+self-contained-math: true
+execute: 
+  warning: false
+  message: false
+  eval: true
+  echo: false
+---
+
+# 条件付き平均差
+
+```{r}
+pacman::p_load(
+  tidyverse,
+  grf,
+  SuperLearner,
+  ranger,
+  patchwork
+)
+```
+
+
+- $$\tau_P(X)=E_P[Y|D=1,X]-E_P[Y|D=0,X]$$ の予測モデル $$g_{\tau}(X)$$ を推定
+
+    - どのような層において、差が大きいのか?
+
+## 応用: 医療行為の"個人化"
+
+- 医療行為における既存の統計分析は、平均的な効果に焦点を当てる
+
+    - 有効な医療行為は、個人の体質等に依存している可能性
+    
+    - 個人に合わせた医療行為を、"根拠"を持って、行いたい
+
+## 応用: マンション経営コンサルテーション
+
+- 中古マンションの"リノベ"コンサルサービスを展開したい
+
+    - 改築を行えば、どの程度市場価値が上がるのか?
+    
+    - 根拠を持って、"予測"したい
+
+    
+# 一般化された部分線形モデル
+
+- $$E[Y|D,X]=\tau(X)\times D+f(X)$$
+
+- 前回は $$\tau(X)=\tau$$
+
+## R Learner
+
+- 大本のアイディアを示した研究者 (Robinson) にちなんで
+
+1. $Y,D$ の予測モデル $g_Y(X),g_D(X)$ を推定
+
+2. $D$ についての予測誤差 $D-g_D(X)$ から、 $Y$ についての予測誤差 $Y-g_Y(X)$ を予測するモデルを機械学習を用いて、推定
+
+- 前回は、単回帰
+
+## Causal Forest
+
+- 最も代表的な方法
+
+- 以下を最小にするように"深い"決定木を推定 $$E[(Y-g_Y(X)-\tau(X)\times [D-g_D(X))]^2]$$
+
+    - 大量の決定木を推定し、平均を予測値とする
+
+## 例 Causal Forest
+
+```{r}
+Data <- read_csv("Public/Example.csv")
+
+Y <- Data$Price
+D <- Data$Reform
+X <- select(
+  Data,
+  -Price,
+  -Reform,
+  -District)
+
+FitY <- CV.SuperLearner(
+  Y = Y,
+  X = X,
+  SL.library = list(
+    "SL.lm",
+    "SL.ranger"
+  ),
+  V = 2
+)
+
+FitD <- CV.SuperLearner(
+  Y = D,
+  X = X,
+  SL.library = list(
+    "SL.lm",
+    "SL.ranger"
+  ),
+  V = 2
+)
+```
+
+```{r}
+#| echo: true
+
+Fit <- causal_forest(
+  X = X,
+  Y = Y,
+  W = D,
+  Y.hat = FitY$SL.predict,
+  W.hat = FitD$SL.predict
+  )
+```
+
+## 例
+
+```{r}
+get_tree(Fit, 1)
+```
+
+
+## 例
+
+```{r}
+hist(Fit$predictions)
+```
+
+
+## 例
+
+```{r}
+#| echo: true
+predict(
+  Fit, 
+  X[1,],
+  estimate.variance = TRUE
+  )
+```
+
+## 例
+
+```{r}
+#| echo: true
+predict(
+  Fit, 
+  X[10,],
+  estimate.variance = TRUE
+  )
+```
+
+## 中間まとめ
+
+- $X$ から $E_P[Y|D=1,X]-E_P[Y|D=0,X]$ を予測することは、（一応)可能
+
+    - Random Forestであれば、 $X$ の数が少なければ、信頼区間も計算できる
+    
+- ただし多くの応用で、精度は高くない
+
+# Best Linear Projection
+
+- 線形近似であれば、より高い精度で推定できる
+
+- $$\tau(X)\sim \beta_0 +..+\beta_LX_L$$
+
+## 例: Best Linear Predictor
+
+```{r}
+best_linear_projection(
+  Fit,
+  X,
+  target.sample = "overlap"
+  )
+```
+
+## 定数項の解釈
+
+- 線形近似モデルの定数項は、通常解釈困難
+
+- $$E[\tau|X]\simeq\underbrace{\beta_0}_{?} + .. + \beta_LX_L$$
+
+- まっすぐな解釈は、 $E[\tau|X=0]=\beta_0$
+
+    - 多くのデータで、$X=0$ の付近には事例がない
+    
+    - 近似の際に"無視"されている
+
+## 例
+
+```{r}
+set.seed(1)
+
+Fig1 <- tibble(
+  X = runif(100,2,5),
+  Tau = X^3 + rnorm(100,0,10)
+  ) |> 
+  bind_rows(
+    tibble(
+      X = 0,
+      Tau = X^3 + rnorm(1,0,1)
+      )
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Tau
+    )
+  ) +
+  theme_bw() +
+  geom_point() +
+  geom_smooth(
+    aes(color = "線形近似"),
+    method = "lm",
+    se = FALSE
+  ) +
+  geom_smooth(
+    aes(color = "母平均"),
+    formula = y ~ I(x^3),
+    method = "lm",
+    se = FALSE
+  ) +
+  xlim(0,5) +
+  ylim(-100,200) +
+  theme(
+    legend.position = "none"
+  )
+
+Fig2 <- tibble(
+  X = runif(100,0,5),
+  Tau = X^3 + rnorm(100,0,10)
+  ) |> 
+  bind_rows(
+    tibble(
+      X = 0,
+      Tau = X^3 + rnorm(1,0,1)
+      )
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Tau
+    )
+  ) +
+  theme_bw() +
+  geom_point() +
+  geom_smooth(
+    aes(color = "線形近似"),
+    method = "lm",
+    se = FALSE
+  ) +
+  geom_smooth(
+    aes(color = "母平均"),
+    formula = y ~ I(x^3),
+    method = "lm",
+    se = FALSE
+  ) +
+  xlim(0,5) +
+  ylim(-100,200) +
+  ylab("")
+
+
+Fig1 + Fig2
+```
+
+## 中心化
+
+- 元の変数を平均0に変換
+
+- $$Z=X-E[X]$$
+
+- 発展: 標準化
+
+- $$Z=\frac{X-E[X]}{SD[X]}$$
+
+## 例: Best Linear Predictor
+
+```{r}
+Z <- scale(X, scale = FALSE)
+
+Best <- best_linear_projection(
+  Fit,
+  Z,
+  target.sample = "overlap"
+  )
+
+Best
+```
+
+## 補論: 信頼区間の計算
+
+- 多くの関数において、推定誤差(Std.Error)は報告される
+
+- 95%信頼区間はざっくり
+
+- $$推定値 \pm 2*Std.Error$$
+
+## まとめ
+
+- 機械学習は、条件付き平均差をそのまま推定するための活路
+
+    - ただ依然として困難が多い
+    
+- 母集団における平均差を推測するツールの方が、現状より確立されている
+
+    - 典型的な方法は、線形近似モデルの推定
+    
+    - 定式化に注意
