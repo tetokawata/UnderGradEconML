@@ -278,7 +278,7 @@ map_dfr(1:100,Est) |>
 X <- TokesSeq |> 
   dfm() |> 
   dfm_trim(
-    min_docfreq = 10
+    min_docfreq = 5
   ) |> 
   convert(
     "data.frame"
