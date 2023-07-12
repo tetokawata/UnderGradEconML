@@ -1,0 +1,31 @@
+
+HomeWork.csv
+
+1. Priceを予測するモデルを作り、予測性能を評価
+
+    - Nerimaはのぞいた残りの変数をXとして使用すること
+    
+    - RandomForestとOLSのStackingモデルを使う
+    
+
+2. Nerimaを予測するモデルを作る
+
+    - Priceはのぞいた残りの変数をXとして使用すること
+    
+    - RandomForestとOLSのStackingモデルを使う
+    
+3. 練馬区と文京区間での不動産価格の平均格差を推定
+
+    - NerimaとPrice以外は全てコントロールする
+    
+    - PartiallingOut法を使う
+    
+4. 不動産価格の格差がXに応じて、どのように異なるのか、その分布をかけ
+
+    - causal_forestを使用
+    
+    - Class7.Rを復習
+    
+    
+    
+    
