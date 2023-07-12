@@ -28,3 +28,6 @@ Public folderから講義スライドとExampleDataをダウンロードでき�
         - [前処理](https://youtu.be/AGL65ghiVrg)
         
         - [相対出現頻度](https://youtu.be/S1fDVBGWNwg)
+
+
+    - [補論: ローカル版Rstudioの使い方](https://youtu.be/nn4dpKPOpas)
