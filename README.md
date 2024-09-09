@@ -1,33 +1,29 @@
 # 教師付き学習 + 計量経済学入門
 
 学部生むけの教師付き学習+計量経済学入門です。
-Public folderから講義スライドとExampleDataをダウンロードできます。
 
-- 進度: 交差検証の手前
+- Public folderから講義スライドをダウンロードできます。
 
-- R実習についてのアーカイブは以下です
+- Example Dataは [Dropbox folder](https://www.dropbox.com/scl/fi/estldgvyygab7z8ugzcnr/Example.csv?rlkey=w05xenuurkz88ze2uhoi9qe79&dl=0) から入手できます。
 
-    - [Packageのロードとデータのインポート](https://youtu.be/KX9F6t4RUYQ)
-    
-    - [rpart関数による決定木の推定](https://youtu.be/xeYi3ebcTCM)
-    
-    - [rpart関数における停止条件の設定](https://youtu.be/G6ORhWQnAr4)
-    
-    - [SuperLearnerを利用した(剪定ずみ)決定木/RandomForestの推定と評価](https://youtu.be/mQk5wbSeP_4)
-    
-    - [estimatrを利用したOLS推定](https://youtu.be/_rMo8KcQXqk)
-    
-    - [SuperLearnerを利用したPartiallingOut推定](https://youtu.be/RXhlE6p-DZA)
+- 自習用推奨教材は以下です。
 
-    - テキスト分析
+    - 機械学習の入門と格差/因果分析への応用までカバーした入門書
+
+        - [Applied Causal Inference Powered by ML and AI](https://causalml-book.org/)
+
+    - 定評のある機械学習の入門書
+
+        - [Introduction to Statistical Learning](https://www.statlearning.com/)
+
+    - 因果推論の現代的入門書
+
+        - [Causal Inference: A Statistical Learning Approach](https://web.stanford.edu/~swager/causal_inf_book.pdf)
     
-        - [準備](https://youtu.be/y0NbV6tVcyQ)
+        - [A first course in causal inference](https://arxiv.org/abs/2305.18793)
+    
+    - R (+ tidyverse) の入門書
+    
+        - [R for Data Science](https://r4ds.hadley.nz/)
+    
         
-        - [単語の出現頻度](https://youtu.be/nlOdpNotkJQ)
-        
-        - [前処理](https://youtu.be/AGL65ghiVrg)
-        
-        - [相対出現頻度](https://youtu.be/S1fDVBGWNwg)
-
-
-    - [補論: ローカル版Rstudioの使い方](https://youtu.be/nn4dpKPOpas)
