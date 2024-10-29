@@ -6,7 +6,11 @@
 
 - Example Dataは [Dropbox folder](https://www.dropbox.com/scl/fi/estldgvyygab7z8ugzcnr/Example.csv?rlkey=w05xenuurkz88ze2uhoi9qe79&dl=0) から入手できます。
 
-- 自習用推奨教材は以下です (全て無料です)。
+- 講義01-04までの復習用資料
+
+    - [母平均の「補助線」の推定](https://github.com/tetokawata/NoteBLP)
+
+- 継続学習用推奨教材は以下です (全て無料です)。
 
     - 機械学習の入門と格差/因果分析への応用までカバーした入門書
 
