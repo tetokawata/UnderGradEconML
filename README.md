@@ -2,6 +2,18 @@
 
 学部生むけの教師付き学習+計量経済学入門です。
 
+- Roadmap
+
+    - ~~予測モデル入門~~
+    
+    - ~~バランス後の比較入門~~
+    
+    - 予測モデル発展: モデル集計
+    
+    - バランス後の比較発展: 予測モデルの直接的活用
+    
+    - バランス後の比較発展: 異質性の推定
+
 - Public folderから講義スライドをダウンロードできます。
 
 - Example Dataは [Dropbox folder](https://www.dropbox.com/scl/fi/estldgvyygab7z8ugzcnr/Example.csv?rlkey=w05xenuurkz88ze2uhoi9qe79&dl=0) から入手できます。
