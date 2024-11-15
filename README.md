@@ -18,7 +18,7 @@
 
 - Example Dataは [Dropbox folder](https://www.dropbox.com/scl/fi/estldgvyygab7z8ugzcnr/Example.csv?rlkey=w05xenuurkz88ze2uhoi9qe79&dl=0) から入手できます。
 
-- 講義01-04までの復習用資料
+- 講義01-04までの復習用資料として活用ください。
 
     - [母平均の「補助線」の推定](https://github.com/tetokawata/NoteBLP)
 
@@ -35,6 +35,8 @@
     - 因果推論の現代的入門書
 
         - [Causal Inference: A Statistical Learning Approach](https://web.stanford.edu/~swager/causal_inf_book.pdf)
+        
+        - [Introduction to Modern Causal Inference](https://alejandroschuler.github.io/mci/introduction-to-modern-causal-inference.html)
     
         - [A first course in causal inference](https://arxiv.org/abs/2305.18793)
         
