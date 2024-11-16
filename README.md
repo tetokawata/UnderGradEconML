@@ -26,30 +26,30 @@
 
     - 機械学習の入門と格差/因果分析への応用までカバーした入門書
 
-        - [Applied Causal Inference Powered by ML and AI](https://causalml-book.org/)
+        - [Applied Causal Inference Powered by ML and AI (Victor Chernozhukov, Christian Hansen, Nathan Kallus, Martin Spindler, Vasilis Syrgkanis)](https://causalml-book.org/)
 
     - 定評のある機械学習の入門書
 
-        - [Introduction to Statistical Learning](https://www.statlearning.com/)
+        - [Introduction to Statistical Learning (Trevor Hastie, Robert Tibshirani, Jerome Friedman)](https://www.statlearning.com/)
 
     - 因果推論の現代的入門書
 
-        - [Causal Inference: A Statistical Learning Approach](https://web.stanford.edu/~swager/causal_inf_book.pdf)
+        - [Causal Inference: A Statistical Learning Approach (Stefan Wager)](https://web.stanford.edu/~swager/causal_inf_book.pdf)
         
-        - [Introduction to Modern Causal Inference](https://alejandroschuler.github.io/mci/introduction-to-modern-causal-inference.html)
+        - [Introduction to Modern Causal Inference (Alejandro Schuler, Mark van der Laan)](https://alejandroschuler.github.io/mci/introduction-to-modern-causal-inference.html)
     
-        - [A first course in causal inference](https://arxiv.org/abs/2305.18793)
+        - [A first course in causal inference (Peng Ding)](https://arxiv.org/abs/2305.18793)
         
-        - [Causal Inference: What If](https://www.hsph.harvard.edu/miguel-hernan/causal-inference-book/)
+        - [Causal Inference: What If (Miguel Hernán, James Robins)](https://www.hsph.harvard.edu/miguel-hernan/causal-inference-book/)
     
     - Balancing Weights
     
-        - [Causation, Comparison, and Regression](https://hdsr.mitpress.mit.edu/pub/1ybwbmlw/release/2)
+        - [Causation, Comparison, and Regression (Ambarish Chattopadhyay, Jose R Zubizarreta)](https://hdsr.mitpress.mit.edu/pub/1ybwbmlw/release/2)
     
     - R (+ tidyverse) の入門書
     
-        - [R for Data Science](https://r4ds.hadley.nz/)
+        - [R for Data Science (Hadley Wickham, Mine Cetinkaya-Rundel, Garrett Grolemund)](https://r4ds.hadley.nz/)
         
-        - [私たちのR](https://www.jaysong.net/RBook/)
+        - [私たちのR (宋財泫, 矢内勇生)](https://www.jaysong.net/RBook/)
     
         
