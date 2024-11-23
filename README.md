@@ -8,7 +8,7 @@
     
     - ~~バランス後の比較入門~~
     
-    - 予測モデル発展: モデル集計
+    - ~~予測モデル発展: モデル集計~~
     
     - バランス後の比較発展: 予測モデルの直接的活用
     
@@ -51,5 +51,7 @@
         - [R for Data Science (Hadley Wickham, Mine Cetinkaya-Rundel, Garrett Grolemund)](https://r4ds.hadley.nz/)
         
         - [私たちのR (宋財泫, 矢内勇生)](https://www.jaysong.net/RBook/)
+        
+        - [Tidyverse style guide](https://marginaleffects.com/bonus/gcomputation.html)
     
         
