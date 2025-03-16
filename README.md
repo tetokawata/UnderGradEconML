@@ -4,25 +4,27 @@
 
 - Roadmap
 
-    - ~~予測モデル入門~~
+    - 予測モデル入門
     
-    - ~~バランス後の比較入門~~
+    - バランス後の比較入門
     
-    - ~~予測モデル発展: モデル集計~~
+    - 予測モデル発展: モデル集計
     
-    - ~~バランス後の比較発展: 予測モデルの直接的活用~~
+    - バランス後の比較発展: 予測モデルの直接的活用
     
-    - ~~バランス後の比較発展: 異質性の推定~~
+    - バランス後の比較発展: 異質性の推定
 
 - Public folderから講義スライドをダウンロードできます。
 
 - Example Dataは [Dropbox folder](https://www.dropbox.com/scl/fi/estldgvyygab7z8ugzcnr/Example.csv?rlkey=w05xenuurkz88ze2uhoi9qe79&dl=0) から入手できます。
 
-- 講義01-04までの復習用資料として活用ください。
+- 復習用資料として活用ください。
 
     - [母平均の「補助線」の推定](https://github.com/tetokawata/NoteBLP)
+    
+    - [バランス後の比較](https://github.com/tetokawata/NoteBalance)
 
-- 継続学習用推奨教材は以下です (全て無料です)。
+- 継続学習用推奨教材は以下です (全てドラフト版は無料です)。
 
     - 機械学習の入門と格差/因果分析への応用までカバーした入門書
 
