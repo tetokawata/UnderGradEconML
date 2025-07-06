@@ -44,7 +44,7 @@
         
         - [Causal Inference: What If (Miguel Hernán, James Robins)](https://www.hsph.harvard.edu/miguel-hernan/causal-inference-book/)
     
-    - Balancing Weights
+    - Balancing Weightsの紹介
     
         - [Causation, Comparison, and Regression (Ambarish Chattopadhyay, Jose R Zubizarreta)](https://hdsr.mitpress.mit.edu/pub/1ybwbmlw/release/2)
     
