@@ -1,5 +1,11 @@
 # 教師付き学習 + 計量経済学入門
 
+- - 講義で使用する例として、以下の設問に答えてください
+
+    - [設問](https://forms.office.com/Pages/ResponsePage.aspx?id=T6978HAr10eaAgh1yvlMhO0_9SUJ_0VKvDH6B82i0qBUOVFGNlcxSDRER0NNQzVETDM0UkZPTEszTC4u)
+
+    - 結果は各設問への回答者数のみ公表されます
+
 学部生むけの教師付き学習+計量経済学入門です。
 
 - Roadmap
@@ -28,6 +34,14 @@
 
 - 継続学習用推奨教材は以下です (全てドラフト版は無料です)。
 
+    - R (+ tidyverse) の入門書
+    
+        - [R for Data Science (Hadley Wickham, Mine Cetinkaya-Rundel, Garrett Grolemund)](https://r4ds.hadley.nz/)
+        
+        - [私たちのR (宋財泫, 矢内勇生)](https://www.jaysong.net/RBook/)
+        
+        - [Tidyverse style guide](https://marginaleffects.com/bonus/gcomputation.html)
+
     - 機械学習の入門と格差/因果分析への応用までカバーした入門書
 
         - [Applied Causal Inference Powered by ML and AI (Victor Chernozhukov, Christian Hansen, Nathan Kallus, Martin Spindler, Vasilis Syrgkanis)](https://causalml-book.org/)
@@ -50,12 +64,6 @@
     
         - [Causation, Comparison, and Regression (Ambarish Chattopadhyay, Jose R Zubizarreta)](https://hdsr.mitpress.mit.edu/pub/1ybwbmlw/release/2)
     
-    - R (+ tidyverse) の入門書
     
-        - [R for Data Science (Hadley Wickham, Mine Cetinkaya-Rundel, Garrett Grolemund)](https://r4ds.hadley.nz/)
-        
-        - [私たちのR (宋財泫, 矢内勇生)](https://www.jaysong.net/RBook/)
-        
-        - [Tidyverse style guide](https://marginaleffects.com/bonus/gcomputation.html)
     
         
