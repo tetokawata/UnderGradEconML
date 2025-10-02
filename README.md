@@ -17,8 +17,6 @@
     
     - バランス後の比較(発展): 異質性の推定
 
-- Public folderから講義スライドをダウンロードできます。
-
 - Example Dataは [Dropbox folder](https://www.dropbox.com/scl/fi/estldgvyygab7z8ugzcnr/Example.csv?rlkey=w05xenuurkz88ze2uhoi9qe79&dl=0) から入手できます。
 
 - 復習用資料として活用ください。
