@@ -29,10 +29,12 @@
     - R (+ tidyverse) の入門書
     
         - [卒業論文のためのR入門 (森知晴)](https://tomoecon.github.io/R_for_graduate_thesis/)
-    
-        - [R for Data Science (Hadley Wickham, Mine Cetinkaya-Rundel, Garrett Grolemund)](https://r4ds.hadley.nz/)
         
         - [私たちのR (宋財泫, 矢内勇生)](https://www.jaysong.net/RBook/)
+        
+        - [R for Data Science (Hadley Wickham, Mine Cetinkaya-Rundel, Garrett Grolemund)](https://r4ds.hadley.nz/)
+        
+            - [Advanced R (Hadley Wickham)](https://adv-r.hadley.nz/)
         
     - 機械学習の入門と格差/因果分析への応用までカバーした上級レベルの教科書
 
@@ -56,6 +58,8 @@
     
         - [Causation, Comparison, and Regression (Ambarish Chattopadhyay, Jose R Zubizarreta)](https://hdsr.mitpress.mit.edu/pub/1ybwbmlw/release/2)
     
+    - データ分析の包括的教科書
     
+        - [Computer Age Statistical Inference (Bradley Efron, Trevor Hastie)](https://hastie.su.domains/CASI/)
     
         
