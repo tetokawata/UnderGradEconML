@@ -1,7 +1,5 @@
 # 教師付き学習 + 計量経済学入門
 
-- 抽象的おおわく -> 具体的大枠 -> 細かい議論の順番でナンバー
-
 学部生むけの教師付き学習+計量経済学入門です。
 
 - Roadmap
@@ -12,7 +10,7 @@
     
     - 補論: 社会の仕組み(構造)と母集団の接続
 
-    - 予測モデル(発展): モデル集計
+    - ~~予測モデル(発展): モデル集計~~
     
     - バランス後の比較(発展): 予測モデルの直接的活用
     
@@ -63,4 +61,7 @@
     
         - [Computer Age Statistical Inference (Bradley Efron, Trevor Hastie)](https://hastie.su.domains/CASI/)
     
+    - 解釈用のモデル
+    
+        - [Model to Meaning: How to interpret statistical models in R and Python (Vincent Arel-Bundock)](https://marginaleffects.com/)
         
