@@ -1,0 +1,778 @@
+---
+title: "序論"
+subtitle: "経済学各論(機械学習)"
+author: "川田恵介"
+institute: "keisukekawata@iss.u-tokyo.ac.jp"
+format:
+  revealjs:
+    self-contained: true
+    incremental: true 
+    code-fold: true
+    slide-number: true
+execute:
+  echo: false
+  eval: true
+  warning: false
+  message: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r SetUp}
+pacman::p_load(
+  tidyverse,
+  DiagrammeR,
+  recipes,
+  SuperLearner
+)
+```
+
+
+- 講義資料: https://github.com/tetokawata/UnderGradEconML
+
+1. データ分析周りのキーワード
+
+2. "事例"から学ぶ難しさ
+    - 機械学習でも、インタビュー調査でも、歴史分析でも直面
+
+3. 適切に単純化されたモデルによる解決
+    - 機械学習・計量経済学・統計学のきも
+
+4. 講義の概要
+
+5. 次回への準備
+
+
+# データ分析
+
+- 不完全な事例集（経験、歴史、データ等）から人間が学ぶ方法
+
+    - 経済学では、「"意思決定"に生かす知見」を伝統的に重視
+
+---
+
+- データ分析への注目はますます高まる
+
+  - [AI人材](https://tameni.mynavi.jp/market/3929/)
+
+  - [リスキリングにおける人気項目](https://news.mynavi.jp/techplus/article/20220127-2258336/#:~:text=%E3%83%AA%E3%82%B9%E3%82%AD%E3%83%AA%E3%83%B3%E3%82%B0%E3%81%AE%E5%AD%A6%E7%BF%92%E5%88%86%E9%87%8E%E3%81%A8%E3%81%97%E3%81%A6,%E3%81%AA%E3%81%A9%E3%81%8C%E4%BA%BA%E6%B0%97%E3%81%A0%E3%81%A8%E3%81%84%E3%81%86%E3%80%82)
+  
+- 学際的発展
+
+  - 経済学 `r emoji::emojis[397,1]` 経営学 `r emoji::emojis[397,1]` 金融(工)学 `r emoji::emojis[397,1]` 生物・医学 `r emoji::emojis[397,1]` 政治学 `r emoji::emojis[397,1]` 社会学 `r emoji::emojis[397,1]` 統計学 `r emoji::emojis[397,1]` 計算機科学
+  
+  - 大学 `r emoji::emojis[397,1]` 企業 `r emoji::emojis[397,1]` 公的機関
+
+## 機械学習
+
+- "統計学" (計量経済学の土台) とは異なるルーツ(AIの開発)を有するデータ分析方法
+
+    - 今では中核技術
+    
+- 様々な"バズ"技術に活用
+
+    - [ChatGPT](https://utelecon.adm.u-tokyo.ac.jp/docs/20230403-generative-ai), AlphaGoなどなど
+    
+## 経済学部生と機械学習
+
+- 志望キャリアをと会わず、経済学部生が知っておくべき教養となりつつある
+
+    - データ分析自体はもちろん、正しく分析結果を活用する・"規制"する、ためにも重要
+
+- [日本企業内経済学者](https://www.cyberagent.co.jp/way/list/detail/id=26613)
+    
+- [日本経済センター: 研修制度](https://www.jcer.or.jp/human-resource)
+
+## 機械学習 + (計量)経済学
+
+- 伝統的な計量経済学との融合が進む
+
+- 特に重要なフィールドの一つ
+  
+- 例: マイクロソフトが進めるプロジェクト
+
+    - [EconML](https://www.microsoft.com/en-us/research/project/econml/)
+
+
+## イメージ図：ゴール像
+
+```{r Image}
+grViz("digraph dot{
+      graph [rankdir = LR]
+      
+      node []
+      a [label = '事例分析者', shape = square]
+      b [label = '分析結果']
+      c [label = '意思決定者', shape = square]
+      d [label = '分析目標']
+      D [label = '計量経済学, 機械学習, 統計学']
+      a -> D
+      c -> D
+      edge []
+      {rank = same; b; d; D}
+      a -> b -> c -> d -> a
+      D -> b
+}")
+```
+
+## 例: 需要予測
+
+- 過去の販売事例から、店舗レベルでの需要予測の精度が改善
+
+    - 意思決定者が、物流・発注システムの改革も行うことで、食品破棄・売り逃しを減らせる
+    
+- 個人レベルでの予測精度が"大幅"改善
+
+    - 意思決定者は、まったく新しい通販サービスの提供できる?
+    
+    - 注文を受ける"前"に、予測された商品を発送、キャンセルしなければ料金を支払う ("注文 $\rightarrow$ 発注"から "発注 $\rightarrow$ 注文"へ)
+
+- [予測マシンの世紀　AIが駆動する新たな経済](https://www.amazon.co.jp/%E4%BA%88%E6%B8%AC%E3%83%9E%E3%82%B7%E3%83%B3%E3%81%AE%E4%B8%96%E7%B4%80-AI%E3%81%8C%E9%A7%86%E5%8B%95%E3%81%99%E3%82%8B%E6%96%B0%E3%81%9F%E3%81%AA%E7%B5%8C%E6%B8%88-%E3%82%A2%E3%82%B8%E3%82%A7%E3%82%A4-%E3%82%A2%E3%82%B0%E3%83%A9%E3%83%AF%E3%83%AB-ebook/dp/B07NJ6YY9G/ref=sr_1_1?__mk_ja_JP=%E3%82%AB%E3%82%BF%E3%82%AB%E3%83%8A&crid=2LFF38MM58UUC&keywords=%E4%BA%88%E6%B8%AC%E3%83%9E%E3%82%B7%E3%83%B3&qid=1681194284&sprefix=%E4%BA%88%E6%B8%ACm%2Caps%2C448&sr=8-1)
+
+## 他のワード
+
+- 強化学習、深層学習 (Deep Learning), Generative Model $=$ 機械学習の一手法
+
+  - 本講義では教師付き学習を学び、その中で深層学習,Generative Modeにも触れる
+
+- ビッグデータ：”大きなデータ”
+
+  - 元の定義は一つのコンピュータでは処理できないほど大きなデータ
+  
+- データサイエンス：厳密な定義はない
+
+- [ChatGPT](https://www.gizmodo.jp/2023/01/chat-gpt-openai-ai-finance-ai-everything-we-know.html) 教師付き学習や強化学習を組みあせて、複雑な予測結果を表示 (Generative model)
+
+# 事例から学ぶ技術
+
+---
+
+- 他者の事例・自身の経験・歴史を意思決定にどう生かすか？
+
+  - 普遍的な課題
+  
+- （例）経験豊富な指導者が
+
+  - 「練習中の水分補給を禁止」
+  
+  - 「筋肉を増やすために、超長距離遠泳を指示」
+  
+- アドバイスを聞くべきなのか、それとも"老害"なのか？
+
+- 意思決定の際に参照すべき事例はどれか、"偶然生じた例外的"事例を間違えて採用してないか？
+
+  - 「データから観察できない要素が大量に存在する」、社会科学・実務において深刻な課題
+
+## イメージ図
+
+```{r Diagramme, dev='ragg_png'}
+DiagrammeR::grViz("digraph {
+  
+graph[layout = dot, rankdir = LR]
+
+事例収集
+解析・整理
+知見・応用
+
+事例収集 -> 解析・整理 -> 知見・応用
+}")
+```
+
+
+## 例: 練馬1Lの取引価格は？
+
+```{r ExampleZero, dev='ragg_png'}
+tibble(立地 = c("練馬", "板橋","板橋","板橋","板橋","板橋"),
+        部屋 = c("1DL","1L","1DL","1DL","1DL","1DL"),
+        `取引価格（100万円）` = c(100,10,8,12,20,30) |> factor()
+         ) |> 
+  knitr::kable()
+```
+
+
+## 課題
+
+- "全く同じ"事例が存在しない・極めて少数しか存在しない
+
+  - なんとなくよく似た事例を参考にする？
+
+- 一見同じに見える事例においても、"矛盾"が存在
+
+  - なんとなく多数派の事例を採用？
+  
+- 例外的に見える事例が存在
+
+  - なんとなく削除する？
+
+- 事例集のもつ"不完全性"にどのように対応するか？
+
+  - 社会・経済データへの応用において普遍的な問題
+
+
+## データ分析
+
+- ”大規模”な事例集 ( $=$ データ）から、検証可能な形で学ぶ方法
+
+  - 業務の電子化により、容易に蓄積可能
+  
+  - ただし課題はそのまま
+  
+  - 多くの解決策が提案
+  
+- PCの性能改善により、さまざまな分析手法が実行可能
+  
+  - "誰にでも”使いやすいプログラムの開発
+
+  - 無料のRやPythonに多く実装
+
+## データのイメージ
+
+- 整理(tidy)されたデータ: 
+
+```{r ExampleData}
+
+Raw <- read_csv("Public/Example.csv")
+```
+
+
+## 現状の問題点
+
+- 事例集が巨大化: より多くの事例について、より多くの情報を取得できる
+
+- 以前として、"誤解"が多い
+
+  - 「ボタンの掛け違い」
+  
+- 高校までの授業では、あまり重点を置かれていない”枠組み”への理解が必要
+
+  - 人(分析者)によって結果が違う
+  
+  - 確率的事象
+
+## "合意"の枠組み
+
+- 最終的な目標は、 "有益かつ、合意できる示唆を得る"
+
+- "綺麗"な世界の現象については、厳密な合意が可能
+
+    - 理科室の実験では、同じ結果を得られる
+
+- 現実の世界では、厳密な合意は不可能
+
+    - 同じやり方で収集したデータを、同じやり方で分析したとしても、結果は人によって異なる
+    
+    - データが異なるため
+
+# 機械学習
+
+---
+
+- 統計学/計量経済学とは異なるルーツ(**AI**の開発)をもつデータ分析手法
+
+  - 教師付き学習、教師なし学習、強化学習、等々
+  
+- 計量経済学とよく似た問題意識
+
+  -　方言が大きく異なる
+
+- 発展するにつれて、当初の目的を超えた価値を持つ
+
+  - 特に変数が多い/複雑なデータ（Rich data）を用いた、予測問題で威力を発揮
+
+  - 計量経済学や医療・生物統計との融合により、因果効果や格差推定においても有益
+  
+
+
+## 予測問題とは
+
+- 事前に観察できる情報 $X$ から、 $Y$ を予測する
+
+  - 中古車買取マニュアル作り：ある車 $X$ がいくら $=Y$ で再販できる？
+
+  - 動画のsuggestionシステム：あるユーザー $=X$ がある動画をどのように”評価” $=Y$ するか？
+
+  - 退学、留年する可能性がある学生へのケア：ある学生が退学してしまう確率は？
+
+  - ”マクロ”政策：将来の人口、景気は?
+
+- 機械学習が大きな比較優位をもつ
+
+## 学習とは
+
+- 煩雑な経験(ヒアリング結果、歴史、個人的経験など) -> 学習 -> 知見
+
+  - 知見の一つ = 予測
+
+## 素朴な方法
+
+- よくある主張
+
+    - "「モデルや理論」を用いずに、現実の事例をしっかりみるべき"
+
+- 最もnaiveな学習法 $=$ 事例の丸暗記 (learning by memorization)
+
+  - 予測したい対象と同じ事例を思い出して、その結果を予測値とする
+  
+  - 全く同じ事例がなければ、"最も近い"事例を参照
+  
+  - 予測したい事象が単純かつデータが十分あれば、機能しうる
+  
+## 丸暗記法が有効なケース
+  
+- 「限られた情報から整合的な結果」を生み出すように"設計"されているのであれば有効
+
+- 例
+
+    - 判例
+    
+    - 同じ企業内の賃金
+  
+- 就活?、チャットでの質問？
+  
+## 丸暗記のジレンマ
+
+- 社会における事象 $=$ 大量の要因が影響を与えている
+
+  - データから観察できないものが多数
+  
+  - 本来的には、同じ事象は"存在しない"
+
+- 多くの属性を活用しようとすると、事例数が減少する
+
+## 例
+
+- 38歳香川県出身男性の化粧水への需要を予測したい
+
+    - 事例の中に川田が含まれている $\rightarrow$ 高い需要を予測
+
+- 事例数が増えると、同じ属性の事例が増え、川田の影響は薄まるが
+
+- 年齢・性別・出身地以外にも、予測において重要な属性もありそう
+
+    - 活用する変数を増やす(+ 学歴 + 職業 + 年収 +...)と、同一事例が減り、また川田のみになる
+
+## 丸暗記
+
+```{r}
+grViz("digraph dot{
+      graph [rankdir = LR]
+      
+      node []
+      a [label = '同じような事例内での矛盾']
+      b [label = '変数の拡大', shape = square]
+      c [label = '同じ事例が存在しない']
+      d [label = '事例数の拡大', shape = square]
+      
+      edge []
+      {rank = same; b; d}
+      a -> b -> c -> d -> a
+}")
+```
+
+## 丸暗記の限界
+
+- 丸暗記法がうまくいく前提: 化粧水の消費量を決める重要な要因が全て事例集に記録され、かつ十分な事例数がある
+
+    - ほとんどの応用事例で不可能
+    
+- 例: 一卵性の双子
+
+    - 生まれた時点では"ほとんど同じ"属性を持つが、、、
+
+## 単純化 & 一般化
+
+- 過去の事例がないケースについても、予測する必要がある
+
+  - 一般化 (generalization)
+
+- 適切な単純化が必要
+
+  - 観察できない属性が大きく偏っている事例の影響を抑えるため
+
+  - 人間も(無意識的)に行っている
+
+## 近似モデル
+
+- 近似モデルをデータから推定
+
+  - 近似モデル：複雑な現実を適切に単純化したモデル
+
+- [フェルミ推定](https://www.in-fra.jp/long-internships/articles/647)
+
+:::{.callout-important}
+- *Truth is much too complicated to allow anything but approximations*
+
+  - [(John von Neumann)](https://ja.wikipedia.org/wiki/%E3%82%B8%E3%83%A7%E3%83%B3%E3%83%BB%E3%83%95%E3%82%A9%E3%83%B3%E3%83%BB%E3%83%8E%E3%82%A4%E3%83%9E%E3%83%B3)
+:::
+
+## トレードオフ
+
+- "現実は複雑なのだから、複雑なモデルを用いるべきでは?"
+
+    - 複雑な現実を捉えられる 
+    
+    - データから推定することが難しくなる
+
+# 講義概要
+
+- 前提知識: 四則演算、基礎的な統計知識（平均や分散など）
+
+- 講義資料: 講義スライド、実習用データ
+
+  - Github repository ([リンク](https://github.com/tetokawata/UnderGradEconML))) からダウンロード可能
+  
+  - Rの実装については、Github repository([リンク](https://github.com/tetokawata/R_JPN)) も参照
+
+- 実習環境: [**Posit cloud**](https://rstudio.cloud/)
+
+  - インターネット上で作業できる (自宅からでも)
+
+  - 関心に応じて、R と Rstudioを自身のPCにインストール
+
+## 成績評価
+
+- レポート(100%)
+
+  - 授業期間中に3回実施（１）各手法が正しく使えているか、（２）結果を正しく解釈できているか　
+
+
+## ゴール
+
+- 機械学習（教師付き学習）のコンセプトを理解し、自身でデータに応用できる
+  
+- レポートを通じて、[国土交通省](https://www.land.mlit.go.jp/webland/servlet/MainServlet)が提供するデータを用いて、以下を実装するプログラム作成
+
+  - 中古マンション取引価格を予測するモデル
+  
+  - 中古マンションを改装する平均効果の推定
+  
+  - 改装の効果を予測するモデル
+
+- "履歴書"に、"機械学習の分析用コードを作成し、実際のデータ分析"を行ったことがある、と書けるようにする。
+
+## 無料ソフトの利用
+
+- RないしPythonを強く推奨
+
+  - 企業、大学、公的研究機関の研究者が幅広く利用
+  
+- 本講義ではRを使用
+
+  - クラウド上の開発環境であるRcloudを併用
+  
+  - ネットにさえ繋がれば、異なるPCで作業できる
+
+# 例
+
+- 講義で用いるデータを使って、取引価格の予測モデルを構築
+
+## 例: サンプルサイズ
+
+```{r, dev='ragg_png'}
+Raw <- read_csv("Public/Example.csv")
+
+TempData <- Raw |> 
+  mutate(temp = 1) |> 
+  group_by(
+    Size,
+    District) |> 
+  mutate(Pred = sum(temp)) |> 
+  ungroup() |> 
+  distinct(Size,
+           District,
+           Pred)
+
+NameArea <- unique(Raw$District)
+
+
+Mean <- 5
+Min <- TempData$Pred |> min()
+Max <- TempData$Pred |> max()
+
+TempData |> 
+  mutate(
+    Size = Size |> factor(),
+    District = District |> factor(levels = NameArea)
+    ) |> 
+  ggplot(
+    aes(x = Size,
+        y = District,
+        fill = Pred)
+    ) +
+  theme_bw() +
+  geom_bin2d() +
+  scale_fill_gradient2(midpoint = Mean,
+                       limits = c(Min,Max)) +
+  labs(fill = "予測取引価格(100万円)",
+       x = "最寄駅距離(分)",
+       y = "立地") +
+  theme(legend.position = "bottom")
+```
+
+## 例: Learning by memoraization
+
+```{r, dev='ragg_png'}
+TempData <- Raw |> 
+  group_by(
+    District, 
+    Size
+    ) |> 
+  mutate(Pred = mean(Price)) |> 
+  ungroup() |> 
+  distinct(
+    Size,
+    District,
+    Pred)
+
+NameArea <- unique(Raw$District)
+
+Mean <- TempData$Pred |> mean()
+Min <- TempData$Pred |> min()
+Max <- TempData$Pred |> max()
+
+TempData |> 
+  mutate(
+    Size = Size |> factor(),
+    District = District |> factor(levels = NameArea)) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = District,
+      fill = Pred)
+    ) +
+  theme_bw() +
+  geom_bin2d() +
+  scale_fill_gradient2(
+    midpoint = Mean,
+    limits = c(Min,Max)
+    ) +
+  labs(fill = "予測取引価格(100万円)",
+       x = "最寄駅距離(分)",
+       y = "立地") +
+  theme(legend.position = "bottom")
+```
+
+## 例: Learning by memoraizationもどき
+
+```{r, dev='ragg_png'}
+set.seed(111)
+
+Y <- Raw$Price
+
+X <- Raw |> 
+  select(
+    District,
+    Size
+    ) |> 
+  mutate(
+    District =
+      factor(District,
+        levels = unique(District)
+      )
+  )
+
+TestX <-
+  expand.grid(
+    District = unique(Raw$District) |> 
+      factor(
+        levels = unique(Raw$District)
+      ),
+    Size = seq(
+      min(Raw$Size), 
+      max(Raw$Size))
+  )
+
+
+SL.rpart <- create.Learner(
+  "SL.rpart",
+  params = list(cp = 0,
+                maxdepth = 30,
+                minbucket = 1,
+                minsplit = 1)
+  )
+
+FitY <- SuperLearner(X = X,
+                     Y = Y,
+                     newX = TestX,
+                     SL.library = c(SL.rpart$names
+                                    )
+                     )
+
+TestX$Prediction <- FitY$library.predict[,1]
+
+TestX |> 
+  ggplot(aes(x = Size |> factor(),
+             y = District |> factor(levels = unique(Raw$District)),
+             fill = Prediction)) +
+  geom_bin2d() +
+  scale_fill_gradient2(midpoint = Mean,
+                       limits = c(Min,Max)) +
+  labs(fill = "予測取引価格(100万円)",
+       x = "最寄駅距離(分)",
+       y = "立地") +
+  theme(legend.position = "bottom")
+```
+
+## 例: SuperLearner (170%程度改善)
+
+```{r, dev='ragg_png'}
+set.seed(111)
+
+Y <- Raw$Price
+
+X <- Raw |> 
+  select(
+    District,
+    Size
+  )
+
+TestX <-
+  expand.grid(
+    District = unique(Raw$District),
+    Size = seq(min(Raw$Size), max(Raw$Size))
+  )
+
+FitY <- SuperLearner(
+  X = X,
+  Y = Y,
+  newX = TestX,
+  SL.library = c(
+    "SL.lm",
+    "SL.ranger"
+    )
+  )
+
+TestX$Prediction <- FitY$SL.predict[,1]
+
+TestX |> 
+  ggplot(
+    aes(
+      x = Size |> factor(),
+      y = District |> factor(levels = unique(District)),
+      fill = Prediction)
+      ) +
+  geom_bin2d() +
+  scale_fill_gradient2(
+    midpoint = Mean,
+    limits = c(Min,Max)
+    ) +
+  labs(
+    fill = "予測取引価格(100万円)",
+    x = "最寄駅距離(分)",
+    y = "立地") +
+  theme(legend.position = "bottom")
+```
+
+## ICE: OLS
+
+```{r}
+set.seed(111)
+
+Y <- Raw$Price
+
+X <- recipe(
+  ~ District + Size,
+  Raw |> 
+    select(-Price)
+  ) |> 
+  step_dummy(
+    all_nominal_predictors()
+  ) |> 
+  prep() |> 
+  bake(
+    new_data = NULL,
+    composition = "matrix"
+  )
+
+FitY <- SuperLearner(
+  X = X,
+  Y = Y,
+  SL.library = c(
+    "SL.lm",
+    "SL.ranger"
+    )
+  )
+
+custom_predict <- function(object, newdata) {
+  predict(object, newdata)$library.predict[,1]
+}
+
+ice <- ICEbox::ice(
+  object = FitY, 
+  X = X, 
+  predictor = "Size", 
+  predictfcn = custom_predict,
+  frac_to_build = .05,
+  verbose = FALSE
+  )
+
+plot(ice)
+```
+
+
+## ICE: SuperLearner
+
+```{r}
+set.seed(111)
+
+custom_predict <- function(object, newdata) {
+  predict(object, newdata)$pred[,1]
+  }
+
+ice <- ICEbox::ice(
+  object = FitY, 
+  X = X, 
+  predictor = "Size", 
+  predictfcn = custom_predict,
+  frac_to_build = .05,
+  verbose = FALSE
+  )
+
+plot(ice)
+```
+
+
+## ICE: 丸暗記
+
+```{r}
+large_tree = create.Learner(
+  "SL.ranger", 
+  list(
+    num.trees = 1,
+    mtry = 4,
+    min.node.size = 1,
+    max.depth = 30
+    )
+  )
+
+FitY <- SuperLearner(
+  X = X,
+  Y = Y,
+  SL.library = c(
+    large_tree$names
+    )
+  )
+
+custom_predict <- function(object, newdata) {
+  predict(object, newdata)$library.predict[,1]
+}
+
+ice <- ICEbox::ice(
+  object = FitY, 
+  X = X, 
+  predictor = "Size", 
+  predictfcn = custom_predict,
+  frac_to_build = .05,
+  verbose = FALSE
+  )
+
+plot(ice)
+```
+
+
+# 次回までに
+
+- Positcloudの設定 ([Youtubeへのリンク](https://youtu.be/yF6NxxvpzjE))
+
+    - 時間がある人は本日中に
+

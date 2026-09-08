@@ -1,0 +1,307 @@
+---
+title: "Untitled"
+format: 
+  typst:
+    fig-format: retina
+execute: 
+  echo: false
+  message: false
+  warning: false
+  eval: false
+---
+
+# Restricted model
+
+$$E[Y_{11}]=K_{11}*(1-E)^2$$
+
+$$E[Y_{01}]=K_{11}*E*(1-E)$$
+
+$$E[Y_{10}]=K_{11}*E*(1-E) + (1 - K_{11})*(1-E)$$
+
+$$E[Y_{00}]=K_{11}*E*E + (1 - K_{11})*E$$
+
+```{r}
+library(tidyverse)
+
+data <- read_csv("Data/test_202510106.csv")
+
+Q00 <- if_else(data$Q1 != -50 & data$Q2 != 100, 1, 0)
+Q10 <- if_else(data$Q1 == -50 & data$Q2 != 100, 1, 0)
+Q01 <- if_else(data$Q1 != -50 & data$Q2 == 100, 1, 0)
+Q11 <- if_else(data$Q1 == -50 & data$Q2 == 100, 1, 0)
+
+E_theory = mean(Q01)/(mean(Q01) + mean(Q11))
+K11_theory = mean(Q01)/(E_theory*(1 - E_theory))
+
+
+K11_0 <- 0.9
+E_0 <- 0.1
+
+sigma <- 0.001
+
+calculate_post <- function(q00, q10, q01, q11, k11, e) {
+  result <- if_else(
+      k11 < 1 &
+      k11 > 0 &
+      e < 1 &
+      e > 0,
+    sum(
+      q00 * log(e * (1 - k11) + e * e * k11) +
+        q10 * log((1 - e) * (1 - k11) + (1 - e) * e * k11) +
+        q01 * log((1 - e) * e * k11) +
+        q11 * log((1 - e) * (1 - e) * k11)
+    ),
+    -999
+  )
+  return(result)
+}
+
+result_K11 <- NA
+
+result_E <- NA
+
+for (i in 1:10000) {
+  K11 <- K11_0 + rnorm(1, 0, sigma)
+  E <- E_0 + rnorm(1, 0, sigma)
+
+  log_like_0 <- calculate_post(Q00, Q10, Q01, Q11, K11_0, E_0)
+
+  log_like <- calculate_post(Q00, Q10, Q01, Q11, K11, E)
+
+  prob_update <- exp(log_like - log_like_0)
+
+  prob_update <- case_when(
+    prob_update >= 1 ~ 1,
+    prob_update <= 0 ~ 0,
+    .default = prob_update
+  )
+
+
+  K11_0 <- if_else(
+    prob_update >= 1,
+    K11,
+    sample(c(K11, K11_0), 1, prob = c(prob_update, 1 - prob_update))
+  )
+
+  E_0 <- if_else(
+    prob_update >= 1,
+    E,
+    sample(c(E, E_0), 1, prob = c(prob_update, 1 - prob_update))
+  )
+  result_K11[i] <- K11_0
+  result_E[i] <- E_0
+}
+
+tibble(
+  result_K11,
+  result_E,
+  period = 1:length(result_E)
+) |>
+  ggplot(
+    aes(
+      x = period,
+      y = result_K11
+    )
+  ) +
+  geom_line(
+    aes(
+      color = "K11"
+    )
+  )  +
+  geom_line(
+    aes(
+      y = result_E,
+      color = "E"
+    )
+  )
+
+tibble(
+  result_K11,
+  result_E,
+  period = 1:length(result_E)
+) |>
+  filter(period >= 1000) |>
+  ggplot(
+    aes(
+      x = result_K11,
+      y = "K11"
+    )
+  ) +
+  geom_boxplot() +
+  geom_boxplot(
+    aes(
+      x = result_E,
+      y = "E"
+    )
+  ) 
+```
+
+
+
+# Full model
+
+```{r}
+library(tidyverse)
+
+data <- read_csv("Data/test_202510106.csv")
+
+Q00 <- if_else(data$Q1 != -50 & data$Q2 != 100, 1, 0)
+Q10 <- if_else(data$Q1 == -50 & data$Q2 != 100, 1, 0)
+Q01 <- if_else(data$Q1 != -50 & data$Q2 == 100, 1, 0)
+Q11 <- if_else(data$Q1 == -50 & data$Q2 == 100, 1, 0)
+
+K10_0 <- 0.03
+K11_0 <- 0.95
+E_0 <- 0.1
+
+sigma <- 0.001
+
+calculate_post <- function(q00, q10, q01, q11, k10, k11, e) {
+  result <- if_else(
+    (1 - k10 - k11) + e * k10 + e * e * k11 < 1 &
+      (1 - k10 - k11) + e * k10 + e * e * k11 > 0 &
+      (1 - e) * k10 + (1 - e) * e * k11 < 1 &
+      (1 - e) * k10 + (1 - e) * e * k11 > 0 &
+      (1 - e) * e * k11 < 1 &
+      (1 - e) * e * k11 > 0 &
+      (1 - e) * (1 - e) * k11 < 1 &
+      (1 - e) * (1 - e) * k11 > 0 &
+      k11 + k10 < 1 &
+      k11 > 0 &
+      k10 > 0 &
+      e < 1 &
+      e > 0,
+    sum(
+      q00 * log((1 - k10 - k11) + e * k10 + e * e * k11) +
+        q10 * log((1 - e) * k10 + (1 - e) * e * k11) +
+        q01 * log((1 - e) * e * k11) +
+        q11 * log((1 - e) * (1 - e) * k11)
+    ),
+    -999
+  )
+  return(result)
+}
+
+result_K10 <- NA
+
+result_K11 <- NA
+
+result_E <- NA
+
+for (i in 1:10000) {
+  K10 <- K10_0 + rnorm(1, 0, sigma)
+  K11 <- K11_0 + rnorm(1, 0, sigma)
+  E <- E_0 + rnorm(1, 0, sigma)
+
+  log_like_0 <- calculate_post(Q00, Q10, Q01, Q11, K10_0, K11_0, E_0)
+
+  log_like <- calculate_post(Q00, Q10, Q01, Q11, K10, K11, E)
+
+  prob_update <- exp(log_like - log_like_0)
+
+  prob_update <- case_when(
+    prob_update >= 1 ~ 1,
+    prob_update <= 0 ~ 0,
+    .default = prob_update
+  )
+
+  K10_0 <- if_else(
+    prob_update >= 1,
+    K10,
+    sample(c(K10, K10_0), 1, prob = c(prob_update, 1 - prob_update))
+  )
+
+  K11_0 <- if_else(
+    prob_update >= 1,
+    K11,
+    sample(c(K11, K11_0), 1, prob = c(prob_update, 1 - prob_update))
+  )
+
+  E_0 <- if_else(
+    prob_update >= 1,
+    E,
+    sample(c(E, E_0), 1, prob = c(prob_update, 1 - prob_update))
+  )
+  result_K10[i] <- K10_0
+  result_K11[i] <- K11_0
+  result_E[i] <- E_0
+}
+
+tibble(
+  result_K10,
+  result_K11,
+  result_E,
+  period = 1:length(result_E)
+) |>
+  ggplot(
+    aes(
+      x = period,
+      y = result_K10
+    )
+  ) +
+  geom_line(
+    aes(
+      color = "K10"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = result_K11,
+      color = "K11"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = result_E,
+      color = "E"
+    )
+  )
+
+test <- tibble(
+  result_K10,
+  result_K11,
+  result_E,
+  period = 1:length(result_E)
+) |>
+  mutate(
+    result_K00 = 1 - result_K10 - result_K11
+  )
+
+tibble(
+  result_K10,
+  result_K11,
+  result_E,
+  period = 1:length(result_E)
+) |>
+  mutate(
+    result_K00 = 1 - result_K10 - result_K11
+  ) |>
+  filter(period >= 1000) |>
+  ggplot(
+    aes(
+      x = result_K10,
+      y = "K10"
+    )
+  ) +
+  geom_boxplot() +
+  geom_boxplot(
+    aes(
+      x = result_K11,
+      y = "K11"
+    )
+  ) +
+  geom_boxplot(
+    aes(
+      x = result_E,
+      y = "E"
+    )
+  ) +
+  geom_boxplot(
+    aes(
+      x = result_K00,
+      y = "K00"
+    )
+  )
+
+```
+

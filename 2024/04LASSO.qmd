@@ -1,0 +1,510 @@
+---
+title: "LASSO: 罰則付き回帰"
+subtitle: "機械学習"
+author: "川田恵介 (keisukekawata@iss.u-tokyo.ac.jp)"
+bibliography: "ref.bib"
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+execute:
+  echo: false
+  eval: true
+  warning: false
+  message: false
+---
+
+# データ主導の単純化
+
+- 「事例数に応じて、モデルを適度に複雑化する」を人力で行うことは難しい
+
+    - 特に$X$が多いケースでは、事実上困難
+    
+- データとパソコンに任せよう!!!
+
+
+```{r}
+set.seed(111)
+library(tidyverse)
+
+Sim = function(n,i){
+  set.seed(i)
+  Temp = tibble::tibble(
+    X = sample(
+      seq(0,1,0.1),
+      n,
+      replace = TRUE
+    ),
+    TrueY = X^2 + 
+      dplyr::case_when(
+        X < 0.4 ~ 0,
+        .default = 5
+      ),
+    Y = TrueY + rnorm(n,0,10)
+  )
+  return(Temp)
+}
+
+AutoLASSO = function(
+    data){
+  result = hdm::rlasso(
+    Y ~ poly(X,6),
+    data,
+    post = FALSE
+    ) |> 
+    predict(data) |> 
+    as.numeric()
+  return(result)
+}
+
+
+
+AutoLASSO_BS = function(
+    data){
+  result = hdm::rlasso(
+    Y ~ splines::bs(X,6),
+    data,
+    post = FALSE
+    ) |> 
+    predict(data) |> 
+    as.numeric()
+  return(result)
+}
+
+LASSO = function(
+    data,
+    l,
+    d){
+  result = glmnet::glmnet(
+    y = data$Y,
+    x = model.matrix(~ 0 + poly(X,d), data),
+    lambda = l
+  ) |> 
+    predict(model.matrix(~ 0 + poly(X,d), data)) |> 
+    as.numeric()
+  return(result)
+}
+```
+
+## 単純 VS 複雑なモデル
+
+- 線型モデル: $$f(X)=\beta_0 + \underbrace{\beta_1X_1 + ..+ \beta_LX_L}_{複雑性の要因}$$
+
+    - $X$ の数が増えると複雑し、限られた事例数のもとではデータに適合しすぎる
+    
+        - 極端な事例の影響を強く受けすぎる
+
+- 単純すぎるモデル: $$f(X)=\underbrace{\beta_0}_{データ全体の平均}$$
+
+    - $\beta_1=..=\beta_L=0$ と"強制"している
+
+## アイディア
+
+- 過剰適合を抑制しながら、複雑なモデルを推定できないか?
+
+    - 過度の複雑性を抑制する仕組みを導入する
+
+## LASSO
+
+- 以下を最も小さくするように推定する $$(Y-f(X))^2の平均値$$ $$+\underbrace{\lambda}_{Hyper parameter}\times (\beta_1の絶対値 +..+\beta_Lの絶対値)$$
+
+- OLS: 以下を最も小さくするように$\beta$を推定する $$(Y-f(X))^2の平均値$$
+
+## 経済学的解釈: 複雑さへの"課税"
+
+- 複雑性への課税: $\beta_1,..,\beta_L$ の"せいで"、複雑性が発生している
+
+    - 単純すぎるモデル: 複雑性を禁止している
+    
+        - 例: 水銀排出の禁止
+
+    - LASSO: 複雑性への課税/簡潔性への"補助金"
+    
+        - 例: 炭素税
+
+## Hyper parameterの影響
+
+- $\lambda=0$ であれば、OLSと同じモデルを推定
+
+- $\lambda\rightarrow\infty$ であれば、$\beta_1=..=\beta_L=0$ となり単純平均と同じモデルを推定
+
+- $0<\lambda<\infty$ であれば、その中間的なモデルとなる
+
+    - データへの適合にあまり貢献しない変数については、$\beta$ は厳密に0になる
+    
+        - モデルから実質的に除外されている
+
+## 例
+
+- OLSで推定: $$Price=0.1 + 2\times Size + 0.1\times Distance$$
+
+- LASSOで推定: $$Price=0.5 + 1.5\times Size + "0"\times Distance$$ $$=0.5 + 1.5\times Size$$
+
+## 数値例: 課税の影響
+
+```{r, dev='ragg_png'}
+Fig1 = Sim(1000,1) |> 
+  mutate(
+    Pred = LASSO(dplyr::pick(dplyr::everything()),0,5)
+    ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Pred,
+      color = "モデル"
+    )
+  ) +
+  theme_bw() +
+  geom_line() +
+  geom_line(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  xlab("課税なし") +
+  ylim(-4,8)
+
+Fig2 = Sim(1000,1) |> 
+  mutate(
+    Pred = LASSO(dplyr::pick(dplyr::everything()),0.5,5)
+    ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Pred,
+      color = "モデル"
+    )
+  ) +
+  theme_bw() +
+  geom_line() +
+  geom_line(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  xlab("低課税") +
+  ylim(-4,8)
+
+Fig3 = Sim(1000,1) |> 
+  mutate(
+    Pred = LASSO(dplyr::pick(dplyr::everything()),2,5)
+    ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Pred,
+      color = "モデル"
+    )
+  ) +
+  theme_bw() +
+  geom_line() +
+  geom_line(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  xlab("重課税") +
+  ylim(-4,8)
+
+Fig4 = Sim(1000,1) |> 
+  mutate(
+    Pred = AutoLASSO(dplyr::pick(dplyr::everything()))
+    ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Pred,
+      color = "モデル"
+    )
+  ) +
+  theme_bw() +
+  geom_line() +
+  geom_line(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  xlab("最適課税") +
+  ylim(-4,8)
+
+cowplot::plot_grid(
+  Fig1 + theme(legend.position = "none"),
+  Fig2 + theme(legend.position = "none"),
+  Fig3 + theme(legend.position = "none")
+)
+```
+
+## 課税額の設定
+
+- いろいろな方法が提案されている
+
+    - 全て推定されるモデルの予測性能を改善することを念頭に設計されている
+    
+    - 本講義では、hdm packageで実装されている理論的指標を用いる
+    
+        - 母平均に近いモデルが推定されやすいように設定
+
+## 数値例
+
+```{r, dev='ragg_png'}
+cowplot::plot_grid(
+  Fig1 + theme(legend.position = "none"),
+  Fig2 + theme(legend.position = "none"),
+  Fig3 + theme(legend.position = "none"),
+  Fig4 + theme(legend.position = "none")
+)
+```
+
+## 事例数
+
+- 復習: 事例数が増えれば、複雑なモデルをOLS推定することが有効になる
+
+    - LASSOにおいても、課税額を減らし、複雑なモデルを生み出す必要がある
+    
+        - 多くの実装で、事例数に応じてHyper parameterが低下するようになっている
+
+## 数値例: 事例数
+
+```{r, dev='ragg_png'}
+Fig1 = Sim(100,1) |>
+  dplyr::mutate(
+    LASSO = AutoLASSO(dplyr::pick(dplyr::everything())),
+    OLS = lm(Y ~ poly(X,6), dplyr::pick(dplyr::everything())) |> 
+      predict(dplyr::pick(dplyr::everything()))
+  ) |> 
+  ggplot2::ggplot(
+    ggplot2::aes(
+      x = X,
+      y = Y
+    )
+  ) +
+  ggplot2::theme_bw() +
+  ggplot2::geom_smooth(
+    ggplot2::aes(
+      y = LASSO,
+      color = "LASSO"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,6)
+  ) +
+  ggplot2::geom_smooth(
+    ggplot2::aes(
+      y = OLS,
+      color = "OLS"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,6)
+  ) +
+  ggplot2::geom_line(
+    ggplot2::aes(
+      y = TrueY
+    )
+  ) +
+  ggplot2::xlab("200") +
+  ggplot2::ylim(-3,8)
+
+Fig2 = Sim(2000,1) |>
+  dplyr::mutate(
+    LASSO = AutoLASSO(dplyr::pick(dplyr::everything())),
+    OLS = lm(Y ~ poly(X,6), dplyr::pick(dplyr::everything())) |> 
+      predict(dplyr::pick(dplyr::everything()))
+  ) |> 
+  ggplot2::ggplot(
+    ggplot2::aes(
+      x = X,
+      y = Y
+    )
+  ) +
+  ggplot2::theme_bw() +
+  ggplot2::geom_smooth(
+    ggplot2::aes(
+      y = LASSO,
+      color = "LASSO"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,6)
+  ) +
+  ggplot2::geom_smooth(
+    ggplot2::aes(
+      y = OLS,
+      color = "OLS"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,6)
+  ) +
+  ggplot2::geom_line(
+    ggplot2::aes(
+      y = TrueY
+    )
+  ) +
+  ggplot2::xlab("2000") +
+  ggplot2::ylim(-3,8)
+
+Fig3 = Sim(20000,1) |>
+  dplyr::mutate(
+    LASSO = AutoLASSO(dplyr::pick(dplyr::everything())),
+    OLS = lm(Y ~ poly(X,6), dplyr::pick(dplyr::everything())) |> 
+      predict(dplyr::pick(dplyr::everything()))
+  ) |> 
+  ggplot2::ggplot(
+    ggplot2::aes(
+      x = X,
+      y = Y
+    )
+  ) +
+  ggplot2::theme_bw() +
+  ggplot2::geom_smooth(
+    ggplot2::aes(
+      y = LASSO,
+      color = "LASSO"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,6)
+  ) +
+  ggplot2::geom_smooth(
+    ggplot2::aes(
+      y = OLS,
+      color = "OLS"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,6)
+  ) +
+  ggplot2::geom_line(
+    ggplot2::aes(
+      y = TrueY
+    )
+  ) +
+  ggplot2::xlab("20000") +
+  ggplot2::ylim(-3,8)
+
+cowplot::plot_grid(
+  Fig1 + ggplot2::theme(legend.position = "none"),
+  Fig2 + ggplot2::theme(legend.position = "none"),
+  Fig3 + ggplot2::theme(legend.position = "none"),
+  Fig1 |> cowplot::get_legend()
+)
+```
+
+## まとめ: OLS VS LASSO
+
+- OLS: 母平均のシンプルなモデル ($\beta$ の数が少ない)の推定に向いている
+
+    - 複雑なモデル ($\beta$ の数が多い) を推定しようとすると、深刻な過剰適合が発生
+
+- LASSO: 母平均の複雑なモデル も推定できる
+
+    - 過剰適合を緩和
+
+- 必ずしもLASSOがOLSよりも優れたモデルを生み出せるとは限らない
+    
+    - テストデータによる評価が必要
+
+## 付論
+
+- 予測においては、$X$ を標準化(scale(X))することが望ましい $$scale(X)=\frac{X-Xの平均}{Xの分散}$$
+
+- $X$ の"単位"を揃えることができる
+
+    - $X$ = 体重 (kg) でも (g) でも、scale(X) は同じ値となる
+
+# 実例
+
+## 準備
+
+```{r}
+#| echo: true
+set.seed(111) # シード値固定
+library(tidyverse)
+
+
+Data = read_csv("Public/Example.csv") |> 
+  filter(
+    TradeY == 2023
+  )# データ取り込み
+
+
+N = nrow(Data) # 事例数の計算
+
+NumT = round(0.5*N) # 訓練データの数
+
+Group = sample(
+  1:N,
+  NumT
+  ) # 訓練/テストへの分割
+
+Train = Data[Group,] # 訓練
+Test = Data[-Group,] # テスト
+```
+
+## モデルの推定: OLS推定
+
+```{r}
+#| echo: true
+lm(Price ~ scale(Size) + scale(Tenure) + District, 
+   Train)
+```
+
+## モデルの推定: LASSO推定
+
+```{r}
+#| echo: true
+
+hdm::rlasso(
+  Price ~ scale(Size) + scale(Tenure) + District, 
+  Train, 
+  post = FALSE) # LASSOを使用
+```
+
+## 予測: OLSを使用
+
+```{r}
+#| echo: true
+OLS = lm(
+  Price ~ scale(Size) + scale(Tenure) + District, 
+  Train)
+predict(OLS, Test)
+```
+
+## 予測: LASSOを使用
+
+```{r}
+#| echo: true
+LASSO = hdm::rlasso(Price ~ scale(Size) + scale(Tenure) + District, 
+            Train, 
+            post = FALSE)
+
+predict(LASSO, Test)
+```
+
+
+## 評価: OLSを評価
+
+```{r}
+#| echo: true
+
+PredOLS = predict(OLS, Test)
+
+mean((Test$Price - PredOLS)^2)
+```
+
+## 評価: LASSOを評価
+
+```{r}
+#| echo: true
+
+PredLASSO = predict(LASSO, Test)
+
+mean((Test$Price - PredLASSO)^2)
+```
+  

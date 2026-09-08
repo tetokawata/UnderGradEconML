@@ -1,0 +1,458 @@
+---
+title: "中間まとめ: 予測と把握"
+subtitle: "機械学習"
+author: "川田恵介 (keisukekawata@iss.u-tokyo.ac.jp)"
+bibliography: "ref.bib"
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+execute:
+  echo: false
+  eval: true
+  warning: false
+  message: false
+---
+
+# 意思決定
+
+- "予測モデルの推定"以外を目標とするデータ分析も一般的
+
+    - 大量の事例の特徴を人間が理解できるようにする (記述モデルの推定)
+    
+- 活用したい意思決定問題に応じて、しっかり区別することが重要
+
+    - しばしば研究者も混同してきた
+
+## 機械学習による予測モデル推定
+
+- データを構成する事例単位について、個別予測を提供できる
+
+    - 自身の転職後の賃金、物件ごとの中古価格、店舗ごとの需要予測
+
+- 伝統的な方法 (比較的単純なモデルを推定する)に比べて、複雑なモデルを適切に推定できる
+
+    - 過剰適合を緩和できる
+
+## 予測例
+
+```{r}
+#| echo: false
+set.seed(111) # シード値固定
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv") |> 
+  filter(
+    TradeY == 2023,
+    Size >= 40 & Size <= 95
+  )# データ取り込み
+
+N = nrow(Data) # 事例数の計算
+
+Group = sample(
+  1:N,
+  N - 10
+  ) # 訓練/テストへの分割
+
+Train = Data[Group,] # 訓練
+Test = Data[-Group,] # テスト
+
+Result = Test |> 
+  mutate(
+    Simple = lm(
+      Price ~ Size + Distance + Tenure+ District,
+      data = Train) |> 
+      predict(Test),
+    LASSO = lm(
+      Price ~ splines::bs(Size,3) + splines::bs(Distance,3) + splines::bs(Tenure,3) + District +
+        District:splines::bs(Size,3) + splines::bs(Distance,3):District + splines::bs(Tenure,3):District,
+      data = Train) |> 
+      predict(Test) |> 
+      as.numeric()
+  )
+
+Result |> 
+  select(
+    Simple,
+    LASSO,
+    Size,
+    Tenure,
+    Distance,
+    District
+  ) |> 
+  mutate(
+    LASSO = LASSO |> round(1),
+    Simple = Simple |> round(1)
+  ) |> 
+  gt::gt() |>
+  gt::tab_style(
+    style = list(
+      gt::cell_fill(color = "lightcyan")
+    ),
+    locations = gt::cells_body(columns = c(Simple,LASSO))
+  )
+```
+
+## 適した意思決定
+
+- 活用の前提: 十分な過去事例をデータとして活用できる
+
+- 予測したい"事例数"が少ない、"日常的"な意思決定に有効 ("ミクロな意思決定")
+
+- 例: 個別物件の不動産取引
+
+  - 売り手/買い手ともに、取引対象の物件の取引価格を予測できることが有益
+  
+      - 予測モデル自体を理解する必要性が低い
+  
+  - 大量の事例取引がされており、事例数も十分
+
+## 予測の実務への応用
+
+- 以下が重要
+
+    - 応用したい重要な意思決定問題は何か?
+    
+    - どのような$Y$を予測したいのか?
+    
+    - どのようなデータが活用できるのか?
+
+- 現状、"AI"では判断不可能
+
+## 練習問題
+
+- 問題: あるサブスク制動画配信サービスにおける「Userの視聴履歴やいいね数を$X$」とした予測モデルを構築したい。
+
+    - サービスの持続的発展のために、どのような$Y$を予測すべきか?
+    
+        - hint: ある動画をクリックし、視聴を開始するかどうか**ではない**
+
+- 実例: Netflixのデータによるデータ分析コンペ
+
+    - [kaggle](https://www.kaggle.com/)
+
+# "マクロ"な意思決定
+
+- 大量の事例に影響を与えるような意思決定
+
+    - 企業の経営戦略の決定、政府の政策決定、投票決定
+
+- 「事例ごとの大量の予測値」ではなく、「事例集団の"大雑把な"特徴を捉える集計情報」(記述モデル)の方が有益なケースが多い
+
+## 例
+
+- 中期経営計画: 就業者や株主、世間に伝えやすい、集計情報に基づいて、説明を行なっている
+
+    - [セブン&アイ](https://www.7andi.com/ir/file/library/ks/pdf/2021_07ks_01.pdf)
+    
+    - [資生堂](https://corp.shiseido.com/jp/ir/pdf/ir20240209_038.pdf#page=15)
+
+- 白書: 有権者等に向けて、集計情報に基づいた、現状分析結果を説明している
+
+    - [経済財政白書](https://www5.cao.go.jp/keizai3/whitepaper.html)
+
+- ["統計学の母"](https://en.wikipedia.org/wiki/Florence_Nightingale#/media/File:Nightingale-mortality.jpg)
+
+## Recap: 予測モデル
+
+- "事例ごと"に $X$ から欠損情報 $Y$ を予測する
+
+    - 極力多くの事例を使い、$X-Y$ の"過去の"パターンを抽出し、予測に活用
+    
+- 事例ごとに大量の数字(予測値)が出力される
+
+## "マクロな"意思決定への応用
+
+- 影響の範囲が広い("マクロな")意思決定に対しては、個別事例の予測値"そのもの"の 便益は限定的
+
+    - 複数の情報を組み合わせた、人間による意思決定が要求されがち
+
+        - 影響を与える(大量の)事例の特徴について、意思決定者が理解できる情報提供が必要
+        
+        - 大量の予測値を示されても、理解できない
+        
+- 幅広い合意形成には、事実の共有が重要
+
+## 例
+
+- ミクロな意思決定: ある物件をどの程度で買い取るか?
+
+    - 予測モデルによる価格予測
+    
+        - 目の前の物件について、予測値を活用すれば良い
+
+- マクロな意思決定: 支店網の再編戦略
+
+    - **全**物件について、**各々**の予想取引価格が提供できたとしても、 意思決定者が理解できない
+    
+    - 市場の現状を把握できる、人間が理解可能な集計情報が有益
+        
+
+## 用語: 記述モデル
+
+- 地区ごとの平均値など、人間が把握できる程度に簡単なモデルは記述モデルと呼ばれる
+
+    - 人間の把握を手助けするモデル
+    
+        - よく似た動機のモデル: [ビジネスモデル](https://kigyosapo.jp/article/draw-bisiness-model)
+
+- 人間が理解できる程度に単純なので、良い理論的性質を目指す
+
+## 記述モデル VS 予測モデル
+
+```{r, dev='ragg_png'}
+set.seed(111) # シード値固定
+
+Data = read_csv("Public/Example.csv") |> 
+  filter(
+    TradeY == 2023,
+    Size >= 40 & Size <= 95
+  )# データ取り込み
+
+Data |> 
+  mutate(
+    Desc = lm(
+      Price ~ District,
+      data = pick(everything())
+    ) |> 
+      predict(pick(everything()))
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = Desc
+    )
+  ) +
+  theme_bw() +
+  geom_line(
+    aes(
+      color = "記述モデル"
+    )
+  ) +
+  geom_smooth(
+    aes(
+      y = Price,
+      color = "予測モデル"
+    ),
+    se = FALSE
+  ) +
+  facet_wrap(
+    ~ District
+  )
+```
+
+
+## 実例
+
+- 支店網再編計画を議論するために、各地域の平均取引価格を把握したい
+
+- いくつかの推定方法が考えられる
+
+    - 地域ごとに平均取引価格を計算
+    
+        - 伝統的な方法
+    
+    - 予測モデルを推定し、予測値の平均を計算
+    
+- 各地域について事例数が十分(200事例以上)あれば、前者がおすすめ
+
+## 実例
+
+```{r, dev='ragg_png'}
+set.seed(5)
+Temp = read_csv("Public/Example.csv") |> 
+  filter(
+    TradeY == 2023
+  ) |> 
+  mutate(
+    Mean = lm(
+      Price ~ 0 + District,
+      data = pick(everything())
+    ) |> 
+      predict(
+        pick(everything())
+      ),
+    LASSO = hdm::rlasso(
+      Price ~ 0 + District + poly(Size,2) + poly(Distance,2) + poly(Tenure,2),
+      data = pick(everything()),
+      post = FALSE
+    ) |> 
+      predict(
+        pick(everything())
+      ) |> 
+      as.numeric() |> 
+      round(0)
+  ) |> 
+  filter(
+    District %in% c("CBD","墨田区")
+  )
+
+Temp[sample(1:nrow(Temp),10),] |> 
+  select(
+    Price,
+    LASSO,
+    District
+  ) |> 
+  gt::gt() |>
+  gt::tab_style(
+    style = gt::cell_fill(color = "lightblue"),
+    locations = gt::cells_body(
+      rows = District == "CBD"
+    )
+  ) |>
+  gt::tab_style(
+    style = gt::cell_fill(color = "red"),
+    locations = gt::cells_body(
+      rows = District == "墨田区"
+    )
+  )
+```
+
+- PriceとLASSO、どちらの平均値を用いるべき?
+
+## 実例
+
+- 実際のデータで計算すると、かなり乖離がある
+
+```{r, dev='ragg_png'}
+Temp = read_csv("Public/Example.csv") |> 
+  filter(
+    TradeY == 2023
+  ) |> 
+  mutate(
+    Mean = lm(
+      Price ~ 0 + District,
+      data = pick(everything())
+    ) |> 
+      predict(
+        pick(everything())
+      ),
+    LASSO = hdm::rlasso(
+      Price ~ 0 + District + poly(Size,2) + poly(Distance,2) + poly(Tenure,2),
+      data = pick(everything()),
+      post = FALSE
+    ) |> 
+      predict(
+        pick(everything())
+      ) |> 
+      as.numeric() |> 
+      round(0)
+  )
+
+Temp |> 
+  mutate(
+    LASSO = mean(LASSO),
+    .by = District
+  ) |> 
+  distinct(
+    Mean,
+    LASSO,
+    District
+  ) |> 
+  ggplot(
+    aes(
+      y = District,
+      x = LASSO
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      color = "LASSO"
+    )
+  ) +
+  geom_point(
+    aes(
+      x = Mean,
+      color = "平均値"
+    )
+  ) 
+```
+
+## $Y$の平均値の利点
+
+- ある程度の事例数を用いて計算された平均値は、"誤差の範囲"(信頼区間)を示すことができる
+
+    - 母平均が含まれているであろう範囲
+
+- 一般に影響が甚大なマクロな意思決定においては、判断の根拠となる数字は慎重に取り扱う必要がある
+
+    - 誤差の範囲を示すことは重要
+
+        - (機械学習を用いて算出した)予測値の平均では難しい
+
+## 信頼区間
+
+```{r, dev='ragg_png'}
+read_csv("Public/Example.csv") |> 
+  estimatr::lm_robust(
+    Price ~ 0 + District,
+    data = _,
+    subset = TradeY == 2023
+  ) |> 
+  generics::tidy() |> 
+  mutate(
+    Year = "2023"
+  ) |> 
+  ggplot(
+    aes(
+      x = estimate,
+      xmin = conf.low,
+      xmax = conf.high,
+      y = term |> str_sub(9)
+    )
+  ) +
+  theme_bw() +
+  geom_pointrange(
+    position = position_dodge(width = 0.5)
+  )
+```
+
+# まとめ
+
+- 意思決定に応じて、必要な情報の"細かさ"が異なる
+
+    - "細かさ"が異なれば、最適な手法が異なる可能性がある
+
+## 対比例
+
+- Price以外に、 Size, District, Tenure, Distanceが活用可能なデータ
+
+- 予測モデル: 全ての変数と機械学習を活用した複雑なPriceの予測モデル
+
+- 記述モデル: 各Districtの平均価格
+
+    - $X=District$ であり、各$X$の組み合わせについて、十分な事例数を確保できる
+
+## 事例ごとの予測
+
+- 大量の$X$と機械学習を用いた複雑な予測モデルが有効
+
+    - モデル全体の予測性能は評価できる
+
+- 限られた$X$のみを使用した平均値は不十分
+
+    - 例: 立地している区のみでは、予測性能が低い
+    
+        - 同じ区であったとしても、大きな価格差があるため
+
+## 事例全体の特徴把握
+
+- 限られた$X$とOLSや平均値を用いた単純な記述モデルが有効
+
+- 大量の$X$と機械学習を用いた複雑な予測モデルはあまり有効ではない
+
+    - 大量の値があり、人間が理解できない
+    
+    - 予測値を集計しても、信頼区間が計算できない
+    
+        - 予測値と"母平均"との乖離を評価することが難しい
+        
+    - 目的と比べて、過剰に複雑なモデルを推定している

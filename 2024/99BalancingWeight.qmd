@@ -1,0 +1,18 @@
+---
+title: "Untitled"
+format: html
+---
+
+# Concept
+
+- Average value is $$E[Y|D=1]=\int Y f(Y|M,D=1,Z)dY f(M,Z|D=1)dMdZ$$ $$=\int Y f(Y|M,D=1,Z)dY f(M|Z,D=1)f(Z|D=1)dMdZ$$
+
+- Interest counterfactual is $$\theta=\int Y f(Y|M,D=1,Z)dY f(M|Z,D=0)f(Z)dMdZ$$
+
+- Required weight is $$f(M,Z|D=1)\omega(M,Z)=f(M|Z,D=0)f(Z)$$ $$\omega(M,Z)=\frac{f(M,Z|D=0)f(Z)}{f(M,Z|D=1)f(Z|D=0)}$$
+
+## Balancing weght
+
+$$\omega(X) f(X|D=1)=f(X)$$
+
+$$\omega(X) f(X|D=1)=f(X|D=d)$$

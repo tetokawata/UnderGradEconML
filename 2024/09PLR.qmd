@@ -1,0 +1,582 @@
+---
+title: "Double/Debiased Machine Learning"
+subtitle: "機械学習入門"
+author:
+  - name: 川田恵介
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+bibliography: "ref.bib"
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: true
+---
+
+# バランス後の比較: 復習
+
+```{r}
+set.seed(111)
+
+library(tidyverse)
+
+EstBoost <- function(train_y, train_x, test_x) {
+  group = sample(
+    1:2,
+    length(train_y),
+    replace = TRUE,
+    prob = c(0.8,0.2)
+  )
+  
+  train = lightgbm::lgb.Dataset(
+    train_x[group == 1,] |> data.matrix(),
+    label = train_y[group == 1]
+  )
+  
+  validate = lightgbm::lgb.Dataset(
+    train_x[group == 2,] |> data.matrix(),
+    label = train_y[group == 2]
+  )
+  
+  pred = lightgbm::lgb.train(
+    data = train,
+    params = list(
+      objective = "regression",
+      learning_rate = 0.001
+    ),
+    nrounds = 50000,
+    valids = list(test = validate),
+    early_stopping_rounds = 100,
+    verbose = 0
+    ) |> 
+    predict(test_x |> 
+              data.matrix())
+  
+  return(pred)
+}
+
+
+Data = read_csv("Public/Example.csv") |> 
+  mutate(
+    EmebedSize = mean(Size),
+    EmbedTenure = mean(Tenure),
+    EmbedDistance = mean(Size),
+    .by = District
+  )
+
+Group = sample(
+  1:2,
+  nrow(Data),
+  replace = TRUE
+)
+
+Data$HatY_OLS = lm(
+  Price ~ (Tenure + Size + Distance + District)**2 + 
+    splines::bs(Tenure,3) + splines::bs(Size,3) + splines::bs(Distance,3), 
+  Data,
+  subset = Group == 1
+  ) |> 
+  predict(Data) |> 
+  as.numeric()
+
+
+Data$HatD_OLS = lm(
+  D ~ (Tenure + Size + Distance + District)**2 + 
+    splines::bs(Tenure,3) + splines::bs(Size,3) + splines::bs(Distance,3), 
+  Data,
+  subset = Group == 1
+  ) |> 
+  predict(Data) |> 
+  as.numeric()
+
+Data$HatY_RF = ranger::ranger(
+  Price ~ Tenure + Size + Distance + EmebedSize + EmbedTenure + EmbedDistance,
+  Data[Group == 1,]
+  ) |> 
+  predict(Data) |> 
+  magrittr::extract2("predictions") |> 
+  as.numeric()
+
+Data$HatD_RF = ranger::ranger(
+  D ~ Tenure + Size + Distance + EmebedSize + EmbedTenure + EmbedDistance,
+  Data[Group == 1,]
+  ) |>
+  predict(Data) |> 
+  magrittr::extract2("predictions") |> 
+  as.numeric()
+
+Data$HatY_GBM = EstBoost(
+  train_y = Data$Price[Group == 1],
+  train_x = Data[Group == 1,] |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    ),
+  test_x = Data |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    )
+)
+
+Data$HatD_GBM = EstBoost(
+  train_y = Data$D[Group == 1],
+  train_x = Data[Group == 1,] |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    ),
+  test_x = Data |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    )
+)
+
+
+Data$HatY = lm(Price ~ HatY_RF + HatY_OLS + HatY_GBM,
+   Data,
+   subset = Group == 2) |> 
+  predict(Data)|> 
+  as.numeric()
+
+
+Data$HatD = lm(D ~ HatD_OLS + HatD_RF + HatD_GBM,
+   Data,
+   subset = Group == 2) |> 
+  predict(Data)|> 
+  as.numeric()
+```
+
+
+- 因果推論/格差/比較研究における中心的な手法
+
+## 目標: バランス後の比較
+
+- $X$ の分布についての差を補正した後の、平均値の比較
+
+- $\theta(1) - \theta(0)$
+
+- $$\theta(d)=\underbrace{E[Y|d,X]\times Target(X) のXについての和}_{\int E[Y|d,X]\times Target(X)dX}$$
+
+- $Target(X)$ : 研究者が指定する集計用荷重
+
+## 例: Sizeのバランス
+
+```{r, dev='ragg_png'}
+Data|> 
+  filter(
+    Size %in% c(75,90)
+  ) |> 
+  mutate(
+    TotalN = n()
+  ) |> 
+  mutate(
+    `Yの平均値` = mean(Price) |> round(1),
+    N = n(),
+    .by = c(D,Size)
+  ) |> 
+  mutate(
+    Target = (n()/TotalN) |> round(4),
+    .by = c(Size)
+  ) |> 
+  distinct(
+    `Yの平均値`,
+    D,
+    Size,
+    N,
+    Target
+  ) |> 
+  mutate(
+    `データ上の割合` = (N/sum(N)) |> round(3),
+    .by = D
+  ) |> 
+  arrange(
+    Size,
+    D
+  ) |> 
+  gt::gt() |> 
+  gt::tab_style(
+    style = gt::cell_fill(color = "lightblue"),
+    locations = gt::cells_body(
+      rows = D == 1
+    )
+  )
+```
+
+## OLS
+
+- $Y\sim D + Size + Tenure$ をOLSで推定すると、 
+
+- $\beta_D=$
+
+    - Size, Tenureの平均値を$D$間でバランスさせた上での$Y$ の平均値の比較結果
+
+## OLS
+
+- $Y\sim D + Size + Tenure + Size^2 + Tenure^2 + Size\times Tenure$ をOLSで推定すると、 
+
+- $\beta_D=$
+
+    - Size, Tenureの平均値と分散、共分散を$D$間でバランスさせた上での$Y$ の平均値の比較結果
+
+## OLS
+
+- $$Y\sim D + \underbrace{f(Size,Tenure)}_{非常に複雑なモデル}$$ をOLSできれば、
+
+- Size,Tenureの分布を完璧にバランスできる
+
+- 問題: モデルを"長くしすぎると"、推定精度が低下する  ([07MomentBalance参照](https://github.com/tetokawata/UnderGradEconML/blob/main/Public/07MomentBalance.pdf))
+
+## Post LASSO
+
+- 重要な$X$をデータ主導で選択する
+
+- 問題: 線型モデルが、平均値の優れたモデルとは限らない ([08Aggregation参照](https://github.com/tetokawata/UnderGradEconML/blob/main/Public/08Aggregation.pdf))
+
+
+## 動機
+
+- $$Y\sim D + \underbrace{f(Size,Tenure)}_{非常に複雑なモデル}$$ をなんとか推定できないか?
+
+- Stackingなどを駆使することで、より高い精度の予測モデルを推定できる
+
+    - 精度が高い $=$ より 平均値に近い
+    
+    - バランス後の比較に、予測モデルを直接活用できないか?
+    
+    - OLSの伝統的な別解釈が活用できる
+
+# OLSの別解釈
+
+- [FWL定理](https://en.wikipedia.org/wiki/Frisch%E2%80%93Waugh%E2%80%93Lovell_theorem)
+
+## OLS/Post selectionの別解釈
+
+- $Y\sim D + X_1 + .. + X_L$ をOLS推定して得られる $D$ の係数値は、以下の手順で得られる推定値と同じ値になる
+
+1. $Y$ と $D$ の予測モデル $\beta_0 + \beta_1X_1 +.. + \beta_LX_L$をOLSで推定する
+
+2. $Y$ の予測誤差 $Y-Yの予測値$ 、 $D$ の予測誤差 $D-Dの予測値$ を計算
+
+3. $Y$ の予測誤差と$D$ の予測誤差でOLS推定する
+
+## 理想的な状況の再解釈
+
+- $Y$または$D$と関係している変数を全て含めた複雑なモデルを十分な事例数で推定できれば、$D$ の係数値 $= X$の分布を完璧にバランスさせた後の平均差
+
+## 直感
+
+- バランスさせることで、平均差が変わる理由
+
+    - $D$ の間で$X$の分布がずれている: $X$ と $D$ が関係している
+    
+    - $X$ が $Y$ が関係している
+    
+- $X$ と $D,Y$ の関係性が問題
+
+## 直感
+
+- 十分に複雑なモデルを十分な事例数で推定できれば、 $X$ から $Y/D$ への最善の予測モデルを得られる
+
+    - 「予測できない部分 $=$ $X$ とは"無関係"の部分」
+    
+- 予測できない部分同士の回帰 $=$ $X$ とは無関係の部分同士の回帰
+
+- 含意: $Y$ と $D$ の良い予測モデルを頑張って作れば良い
+
+    - Random Forest, LASSO, Deep Learning, Stackingなどが活用できる!!!
+
+# R learner
+
+- 代表的な方法の一つ: Robinson/Residual learner
+
+- OLS/Post Double Seletionの一般化
+
+## アルゴリズム
+
+1. データを訓練とテストに分割
+
+1. $Y$ と $D$ の予測モデルを、訓練データとなんらかの推定手法で推定する
+
+2. $Y$ の予測誤差 $Y-Yの予測値$ 、 $D$ の予測誤差 $D-Dの予測値$ をテストデータで計算
+
+3. $Y$ の予測誤差と$D$ の予測誤差を、テストデータでOLS推定する
+
+
+## 例
+
+```{r, dev='ragg_png'}
+estimatr::lm_robust(
+  Price ~ D,
+  Data
+  ) |> 
+  generics::tidy() |> 
+      filter(
+        term == "D"
+      ) |> 
+  mutate(
+    Method = "No Balance"
+  ) |> 
+  bind_rows(
+    estimatr::lm_robust(
+      Price ~ D + Tenure + Size + Distance + District,
+      Data
+    ) |> 
+      generics::tidy() |> 
+      filter(
+        term == "D"
+      ) |> 
+  mutate(
+    Method = "OLS"
+  )
+  ) |> 
+  bind_rows(
+    estimatr::lm_robust(
+      TempY ~ TempD,
+      Data |> 
+        mutate(
+          TempY = Price - HatY,
+          TempD = D - HatD
+        ),
+      subset = Group == 2
+    ) |> 
+      generics::tidy() |> 
+      filter(
+        term == "TempD"
+      ) |> 
+  mutate(
+    Method = "R Learner"
+  )
+  ) |> 
+  ggplot(
+    aes(
+      x = estimate,
+      xmin = conf.low,
+      xmax = conf.high,
+      y = Method
+    )
+  ) +
+  theme_bw() +
+  geom_pointrange() +
+  geom_vline(
+    xintercept = 0
+  )
+```
+
+# R-learnerの性質
+
+- OLSやnaiveな機械学習の応用と比べて、優れた性質を持つ
+
+    - 特に「信頼できる」信頼区間を計算できる
+
+## OLSの問題点
+
+- $X$の"平均値"のみをバランスするので、研究者の定式化に結果が強く依存
+
+- 例: $X$ の分散も $Y$ に影響を与えるのに、モデルに入れてない場合、$X$の完全なバランスの結果と乖離してしまう
+
+## Naiveな機械学習の応用
+
+- 古典的なアイディア [@varian2014big]: 
+
+    - $D=1$ の事例のみを用いた $Y$ の予測モデルと $D=0$のみを用いたモデルの予測値の差を集計する
+
+    - ２つのモデルを用いるため、T - Learnerと呼ばれる
+
+## 例: RandomForestの活用
+
+```{r}
+#| echo: true
+library(ranger)
+
+Data_D1 = Data[Data$D == 1,]
+Data_D0 = Data[Data$D == 0,]
+
+Model_D1 = ranger(Price ~ Size + Distance + Tenure, Data_D1)
+Model_D0 = ranger(Price ~ Size + Distance + Tenure, Data_D0)
+
+Data$PredY_D1 = predict(Model_D1,Data)$predictions
+Data$PredY_D0 = predict(Model_D0,Data)$predictions
+
+```
+
+## 例
+
+```{r}
+Data |>
+  select(
+    Price,
+    D,
+    Size,
+    Tenure,
+    Distance,
+    PredY_D1,
+    PredY_D0
+  ) |> 
+  mutate(
+    Difference = PredY_D1 - PredY_D0
+  ) |> 
+  head(10) |> 
+  gt::gt() |>
+  gt::fmt_number(
+    columns = c(PredY_D1,PredY_D0,Difference),
+    decimals = 2,
+    use_seps = FALSE
+  )
+```
+
+## 問題点
+
+- $Y$ の平均値のモデルとしての性能に強く依存
+
+- OLSなどの伝統的手法も機械学習的手法も、一般的には要求される水準を満たさない
+
+    - OLSなどの伝統的な手法は、研究者による定式化（の誤り）が推定結果に大きな悪影響を与える
+    
+    - Stackingなどを用いたデータ主導のモデル化は、研究者による定式化への依存は減らせるが、データへの依存度が高くなる
+    
+## 問題点: 詳細
+
+- 推定値が満たして欲しい性質の代表例
+
+    - 無限大の事例数を持つデータを用いることができれば、母集団におけるバランス後の比較結果と一致する
+    
+        - 研究者による定式化に依存するOLSなどでは、保証することは一般に難しい
+    
+    - ある程度の事例数があれば、信頼区間を近似計算できる
+    
+        - データへの依存が大きい機械学習をnaiveに活用すると、保証することは一般に難しい
+
+## R learnerの特徴
+
+- Post-selectionを一般化した性質を持つ
+
+    - $Y$ または $D$ の予測モデルのどちらかでも機能すれば、もう一方はそこそこでも良い
+    
+- 「AIによるダブルチェックが機能」
+
+
+## まとめ
+
+- 多くのアプローチは、(1) 研究者によるモデル設定、 (2) データの偏り、のどちらかの悪影響を強く受けてしまう
+
+- 「予測モデルによるダブルチェック」を活用し、悪影響を低下させることができる
+
+    - セミパラメトリック理論との融合
+
+- 近年、盛んに研究されている
+
+    - 継続学習したい人には、以下を推奨
+    
+    - [@chernozhukov2024applied](https://causalml-book.org/)
+
+## 補論: カリブーレション
+
+- テストデータにおいて、予測値と「平均値」の乖離を示す
+
+    - 予測値と$Y$の乖離ではない (03Population)
+
+- 予測値に応じて、テストデータを等分割する
+
+    - 各サブグループごとに、$Y$と予測値の平均値を算出
+
+- 理想的な予測モデルであれば、一致するはず
+
+## 例: カリブレーション
+
+```{r, dev='ragg_png'}
+Data |> 
+  filter(
+    Group == 2 &
+      D == 1
+  ) |> 
+  mutate(
+    Bin = cut(
+      HatY, 
+      quantile(HatY, probs = seq(0,1,0.1)),
+      include.lowest = TRUE)
+  ) |> 
+  mutate(
+    平均価格 = mean(Price),
+    平均予想 = mean(HatY),
+    .by = Bin
+  ) |> 
+  select(
+    平均価格,
+    平均予想,
+    Bin
+  ) |> 
+  distinct(
+    Bin,
+    平均価格,
+    平均予想
+  ) |> 
+  arrange(平均予想) |> 
+  gt::gt() |> 
+  gt::fmt_number(decimals = 2)
+```
+
+## 補論: 予測誤差
+
+```{r, dev='ragg_png'}
+Data |> 
+  filter(
+    Group == 2
+  ) |> 
+  mutate(
+    Bin = cut(
+      HatY, 
+      quantile(HatY, probs = seq(0,1,0.05)),
+      include.lowest = TRUE)
+  ) |> 
+  mutate(
+    BinY = mean(Price),
+    BinX = mean(HatY),
+    .by = Bin
+  ) |> 
+  ggplot(
+    aes(
+      x = BinX,
+      y = BinY
+    )
+  ) +
+  geom_point() +
+  geom_abline(
+    intercept = 0,
+    slope = 1
+  ) +
+  xlab("Yの予測値") +
+  theme_bw() +
+  ylab("Yのテストデータにおける平均値")
+```
+
+
+## Reference
+
+

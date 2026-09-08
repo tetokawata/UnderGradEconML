@@ -1,0 +1,34 @@
+---
+title: "What If 分析"
+subtitle: "労働経済学2"
+author:
+  - name: 川田恵介
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+bibliography: "ref.bib"
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: true
+---
+
+# 分析例
+
+- なぜ飽和させたらうまくいくのか
+
+- $X$の違いが$Y$に与える影響を遮断するから
+
+    - モーメントのバランスになることを指摘
+
+
+## Reference

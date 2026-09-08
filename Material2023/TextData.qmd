@@ -1,0 +1,40 @@
+---
+title: "Untitled"
+format: html
+---
+
+```{r}
+pacman::p_load(
+  tidyverse,
+  quanteda)
+
+Data <- read_tsv("Data/LiteratureList.tsv") |> 
+  select(
+    論文タイトル,
+    種別
+  ) |> 
+  na.omit() |> 
+  rename(
+    Title = 論文タイトル,
+    Type = 種別
+  )
+
+DFM <- Data |> 
+  corpus(
+  text_field = "Title") |> 
+  tokens(remove_punct = FALSE) |> 
+  tokens_select(
+    '^[０-９ぁ-んァ-ヶー一-龠]+$', 
+    valuetype = 'regex', 
+    padding = TRUE) |> 
+  tokens_remove(
+    '^[ぁ-ん]+$', 
+    valuetype = 'regex', 
+    padding = TRUE) |> 
+  dfm()
+
+DFM |> 
+  convert("data.frame") |> 
+  wordcloud2::wordcloud2()
+```
+

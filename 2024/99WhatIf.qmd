@@ -1,0 +1,499 @@
+---
+title: "What If 分析"
+subtitle: "労働経済学2"
+author:
+  - name: 川田恵介
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+bibliography: "ref.bib"
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: true
+---
+
+# 分析例
+
+- 差が生じている"理由"の(部分的)説明に挑戦
+
+- 講義にはWhat if 分析 (もし〜ならば、どうなるか?) と呼ばれる
+
+## 例: 2023/2021年の単純比較
+
+```{r}
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv") |> 
+  mutate(
+    D = if_else(
+      TradeY == 2023,
+      1,
+      0
+    )
+  )
+
+Data |> 
+  cobalt::bal.tab(
+    D ~ Price,
+    data = _
+  ) |> 
+  cobalt::love.plot()
+```
+
+- 2023年に比べて、2023年の平均取引価格は上昇している
+
+    - なぜ上昇したのか?
+
+## 例: 他の属性比較
+
+```{r}
+Data |> 
+  cobalt::bal.tab(
+    D ~ Price + Size + Tenure + Distance,
+    data = _
+  ) |> 
+  cobalt::love.plot()
+```
+
+## 例: 他の属性の変化
+
+- 実際に取引された物件の情報のみを集計
+
+    - 価格のみならず、取引される物件の特徴も変化
+
+- 価格の以外の属性(部屋の広さ、築年数、駅からの距離)も変化している
+
+- より狭く、築年が古い物件が取引される傾向
+
+    - 平均取引価格の変化の"一部は"、取引物件の性質の違いから生じているのではないか?
+
+## 例: Sizeを調整
+
+```{r}
+Data |> 
+  estimatr::lm_robust(
+    Price ~ D,
+    data = _
+  ) |> 
+  generics::tidy() |> 
+  filter(
+    term == "D"
+  ) |> 
+  mutate(
+    Balance = "無し"
+  ) |> 
+  bind_rows(
+    Data |> 
+      estimatr::lm_robust(
+        Price ~ D + factor(Size),
+        data = _
+      ) |> 
+      generics::tidy() |> 
+      filter(
+        term == "D"
+      )|> 
+  mutate(
+    Balance = "Sizeをバランス"
+  )
+  ) |> 
+  ggplot(
+    aes(
+      x = estimate,
+      xmin = conf.low,
+      xmax = conf.high,
+      y = Balance
+    )
+  ) +
+  theme_bw() +
+  geom_pointrange()
+```
+
+
+## 実例. 既存店ベースの比較
+
+- あるコンビニチェーンで、店舗あたりの平均売り上げが1000万円増大した $$E[Y|D=1] - E[Y|D=0]= 1000万円$$
+
+- 去年から今年にかけて、新規出店が大きく増加した
+    
+    - 売り上げが大きくなる傾向のある新規店の割合が大きく、結果、平均売り上げが増大したのではないか?
+
+- 既存店割合をバランスさせるために、既存店に絞って、比較する
+
+    - [セブン&アイ](https://www.7andi.com/ir/file/library/ks/pdf/2021_07ks_01.pdf)
+    
+## 年齢構造のバランス: 経済成長
+
+- 一人当たりGDP(付加価値)の成長率は異なる
+
+    - 国によって、(付加価値を主に生み出すと想定される)生産年齢人口 (15-65歳)の割合は異なる
+
+- GDP全体/人口とGDP全体/生産年齢の成長率は異なる [@fernandez2023wealth]
+
+    - 後者では、日本の成長率が先進国で最も高い
+    
+        - 労働者が生み出す付加価値の成長は、日本が最も高い (?)
+        
+            - 議論が続く論文だが、少なくともバランスの重要性を示唆
+
+## 年齢構造のバランス: 出生率
+
+
+- [合計特殊出生率](https://ja.wikipedia.org/wiki/%E5%90%88%E8%A8%88%E7%89%B9%E6%AE%8A%E5%87%BA%E7%94%9F%E7%8E%87#:~:text=%E5%90%88%E8%A8%88%E7%89%B9%E6%AE%8A%E5%87%BA%E7%94%9F%E7%8E%87%EF%BC%88%E3%81%94%E3%81%86%E3%81%91%E3%81%84,%E4%BA%BA%E5%8F%A3%E3%81%8C%E8%87%AA%E7%84%B6%E6%B8%9B%E3%81%99%E3%82%8B%E3%80%82)
+
+    - 出生率の国比較や時系列比較に理由される
+    
+        - 年齢構造も異なる
+        
+- 合計特殊出生率 $$=\frac{15歳の女性が一年間で生んだ子供の数}{15歳の女性人口} +$$ $$.. +\frac{49歳の女性が一年間で生んだ子供の数}{49歳の女性人口}$$
+
+## まとめ
+
+- 既存店ベース: 今年と去年で、既存店の割合が異なる
+
+    - 既存店比率を$100\%$に揃える
+    
+- 経済成長: 国によって、生産年齢人口が異なる
+
+    - 生産年齢人口割合を$100\%$に揃える ($+$ 批判の残る仮定)
+    
+- 出生率: 国によって、年齢構造が異なる
+
+    - "すべての年齢が同じ割合"に揃える
+
+## 限界
+
+- 実務家によく使われてきた手法は、バランスさせたい$X$の種類が少ない (既存店か否か、年齢)
+
+    - 事例数が十分あれば、バランスできる
+
+- $X$ の組み合わせが大量にある場合 (部屋の広さ、駅からの距離、築年数、立地)、バランスさせることが難しくなる
+
+    - 発展的な手法の活用: OLS
+    
+        - 近年では、機械学習の活用が注目を集める ([EconML](https://www.microsoft.com/en-us/research/group/alice/))
+
+# 単純な例: データ上でのバランス
+
+## 目標
+
+- 取引年 $(=D)$ 間で、Size $(=X)$ をBalanceさせた後の、価格 $(=Y)$ の平均差を算出
+
+    - "よく似た物件"の平均取引価格の変化
+    
+        - Balanced Comparison (バランス後の比較) と呼ばれる
+
+- Point: Balanceとは何か?
+
+## 準備: 繰り返し期待値の法則
+
+- 繰り返し期待値の法則 $$武蔵大学の平均身$$ $$=(武蔵大学の)経済学部生の平均身長$$ $$\times 経済学部生の割合$$ $$+ 社会学部生の平均身長$$ $$\times 社会学部生の割合+ ...$$
+
+## 正式な定義: 平均値の分解
+
+- 一般にデータ上の$Y$の平均値は以下のように書き換えられる
+ $$d年における平均取引価格$$ $$=(30平米\ \&\ d年)における平均取引価格値$$ $$\times dにおける30平米の物件割合$$ $$+(35平米\ \&\ d年)における平均取引価格値$$ $$\times dにおける35平米の物件割合+..$$
+
+## 例
+
+```{r}
+
+
+Data|> 
+  filter(
+    Size %in% c(75,90)
+  ) |> 
+  mutate(
+    `Yの平均値` = mean(Price) |> round(1),
+    N = n(),
+    .by = c(D,Size)
+  ) |> 
+  distinct(
+    `Yの平均値`,
+    D,
+    Size,
+    N
+  ) |> 
+  mutate(
+    `Sizeの割合` = (N/sum(N)) |> round(3),
+    .by = D
+  ) |> 
+  arrange(
+    Size,
+    D
+  ) |> 
+  gt::gt() |> 
+  gt::tab_style(
+    style = gt::cell_fill(color = "lightblue"),
+    locations = gt::cells_body(
+      rows = D == 1
+    )
+  )
+```
+
+- 2023年$(D=1)$の平均取引価格 $= 0.838\times 71.7 + 0.162 \times 101.9$
+
+
+## 含意
+
+- $D$間での格差を生み出す要因は2種類に分解できる
+
+    - $Yの平均値$ の違い ($X$内での違い)
+    
+    - $Xの割合$ の違い ($X$の違い)
+
+- Balanced Comparison: 後者を排除
+
+## バランス後の平均
+
+- "$X$の格差" を排除した平均値
+
+$$=(30平米\ \&\ d年)における平均取引価格値$$ $$\times \underbrace{30平米の物件割合の調整目標}_{Target}$$ $$+(35平米\ \&\ d年)における平均取引価格値$$ $$\times \underbrace{35平米の物件割合}_{Target}+..$$
+
+## Target Weight
+
+- Target Weightは$D$間で共通
+
+    - 研究者が設定する必要がある
+
+- 代表例として
+
+    - データ全体でのSizeの割合
+    
+    - 一定比率 (合計特殊出生率と同じ)
+
+## 例
+
+- データ全体での$Size = 75$ の割合 $(301 + 414)/(301 + 414 + 77 + 80) = 0.82$
+
+- $Size = 90$ の割合 $(77 + 80)/(301 + 414 + 77 + 80) = 0.18$
+
+```{r}
+Data|> 
+  filter(
+    Size %in% c(75,90)
+  ) |> 
+  mutate(
+    TotalN = n()
+  ) |> 
+  mutate(
+    `Yの平均値` = mean(Price) |> round(1),
+    N = n(),
+    .by = c(D,Size)
+  ) |> 
+  mutate(
+    Target = (n()/TotalN) |> round(4),
+    .by = c(Size)
+  ) |> 
+  distinct(
+    `Yの平均値`,
+    D,
+    Size,
+    N,
+    Target
+  ) |> 
+  mutate(
+    `Sizeの割合` = (N/sum(N)) |> round(3),
+    .by = D
+  ) |> 
+  arrange(
+    Size,
+    D
+  ) |> 
+  gt::gt() |> 
+  gt::tab_style(
+    style = gt::cell_fill(color = "lightblue"),
+    locations = gt::cells_body(
+      rows = D == 1
+    )
+  )
+```
+
+
+## 例: Balanced Mean
+
+```{r, dev='ragg_png'}
+Weight = MatchIt::matchit(
+  D ~ Size,
+  data = Data,
+  method = "Exact",
+  estimand = "ATE"
+)
+
+
+tibble(
+  Value = c(
+    mean((Data$Price)[Data$D == 1]),
+    mean((Data$Price)[Data$D == 0]),
+    mean((Weight$weights*Data$Price)[Data$D == 1]),
+    mean((Weight$weights*Data$Price)[Data$D == 0])
+    ),
+  D = c("2023","2021","2023","2021") |> factor(),
+  Balance = c("なし","なし","Size","Size")
+  ) |> 
+  ggplot(
+    aes(
+      x = D,
+      y = Value,
+      color = Balance
+    )
+  ) +
+  theme_bw() +
+  geom_point()
+
+```
+
+# Balancing weights 
+
+- バランス後の平均値の算出には、Balancing Weightの活用が便利
+
+## 定義: Balancing weights
+
+- Balanced Meanの実際の算出には、Balancing Weightの活用が便利
+
+- $2023$ または $2021$ について、以下を達成する$\omega$ : $$バランス後の平均値=\frac{\omega_1Y_1 + ...}{2023年の事例数}$$
+
+## 例
+
+```{r}
+Data |> 
+  filter(
+    Size %in% c(75,90)
+  ) |> 
+  select(
+    Size,
+    D,
+    Price
+  ) |> 
+  head(11) |> 
+  mutate(
+    N = n(),
+    .by = c(D,Size)
+  ) |> 
+  mutate(
+    TargetN = n(),
+    .by = c(Size)
+  ) |> 
+  mutate(
+    `Sizeの割合` = (N/n()) |> round(3),
+    .by = D
+  ) |> 
+  mutate(
+    `Targetの割合` = (TargetN/n()) |> round(3)
+  ) |> 
+  mutate(
+    `Balancing Weight` = (Targetの割合/Sizeの割合) |> round(3)
+  ) |> 
+  gt::gt() |> 
+  gt::tab_style(
+    style = gt::cell_fill(color = "lightblue"),
+    locations = gt::cells_body(
+      rows = D == 1
+    )
+  )
+```
+
+
+## 他の例: 投票可能数
+
+- 現状の国政選挙は、"一人一票"だが、人によって投票可能数が異なる場合がある
+
+    - 昔の? アイドルの人気投票 (CDをたくさん買った人が、たくさん投票できる)
+
+## 定義: Balancing weights
+
+- Balancing Weightの以下で算出できる
+
+- $2023年$ または $2021$ について、以下を達成する$\omega$ : $$(Size=75)についてのTarget割合$$ $$=(2023年におけるSize=75の割合)$$ $$\times (Size=75へのWeight)$$
+
+## 定義: Balancing weights
+
+$$(Size=75へのWeight)$$ $$=\frac{(Size=75)についてのTarget割合}{2023年におけるSize=75の割合}$$
+
+- 目標に比べて、"過小"となっているグループを、平均値の計算により強く反映される
+
+## 定義: Balancing weights
+
+- Balanced Weightは、以下の定義式から算出できる
+
+- $$Target = \omega \times dにおけるXの割合$$
+
+- $$\omega(X,d)=\frac{Target\ Weight}{dにおけるXの割合}$$
+
+- データ上での割合が、Targetよりも低い集団に対して、重いWeight
+
+- $X$ の割合を、Target Weight に揃える (Balanceする)ように調整する
+
+## 仮定: Overlap
+
+- Balancing weightが"存在する"前提
+
+- "すべての$X$ の組み合わせについて、 $D=d$ もそれ以外も存在する"
+
+    - $f(X)$ をTarget Weightとするのであれば、$$1 > f(D=d|X=x) > 0$$
+    
+    - $f(X|D=d)$ をTarget Weightとするのであれば、$$1 > f(D=d|X=x) \ge0$$
+
+## まとめ
+
+- Overlapの仮定が成り立てば、Balanced comparisonを実行できる
+
+    - Balancing weightで荷重することで、$X$ の分布を揃えた上で、$Y$の平均値を計算できる
+
+- 母集団に対する含意は?
+
+    - 母集団を活用した丁寧な議論が必要
+
+## 付論: 別解釈
+
+- Stratified estimationとしても解釈できる
+
+1. すべての$X$の組み合わせについて、$D$間での$Y$の平均差 $\tau(X)$を計算
+
+2. $\tau(X)$ の"平均値"を計算
+
+
+# 母集団上での推定対象
+
+- 母集団上で定義したEstimandを、データから推定する
+
+## Estimand
+
+- 母集団上で算出したBalanced Mean
+
+    - 研究者が、X,D,YとTarget Weightを決定することで、定義される
+    
+- **母集団上で**Overlapが成り立つことが前提
+
+    - データ上で成り立たなくとも、追加の仮定のもとで母集団上でのBalanced Meanは計算できる
+
+## 実践上の含意
+
+- 理想的な因果推論では、Overlapは常に成り立つと考えられる
+    
+    - RCTに近いデータを用いることができれば、$X$ の分布は$D=1/0$で差がない
+
+- 一般に格差推定においては、$X$の分断が大きく、Overlapが成り立たない可能性が出てくる
+
+    - 今後の内容も踏まえた注意深い議論が必要
+
+## まとめ
+
+- $X$ をバランスさせたもとでの比較 (Balanced comparison)は、Balancing weightsの算出が要求する
+
+    - $X$ の組み合わせに対して、事例数が十分あれば、Overlapの仮定のもとで、$X$を"Exact"にバランスさせるWeightを計算できる
+    
+    - 多くの実践で不十分
+    
+        - OLS [@imbens2015matching; @chattopadhyay2022implied] や傾向スコア、明示的な最適化 [@hainmueller2012entropy; @zubizarreta2015stable] を使用する必要がある
+
+## Reference

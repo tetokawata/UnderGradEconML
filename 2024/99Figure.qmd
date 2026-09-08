@@ -1,0 +1,73 @@
+---
+title: "Untitled"
+format: revealjs
+---
+
+## Quarto
+
+```{dot}
+digraph {
+    rankdir=TB;
+    newrank=true;
+    node[shape = none];
+    edge[arrowsize = 0.1];
+    
+    S [label = "母分布: 中心６区=5割"];
+    D [label = "自身のデータ上の事例分布: 6割"];
+
+    S -> D
+}
+```
+## Quarto
+
+```{dot}
+digraph {
+    rankdir=TB;
+    newrank=true;
+    node[shape = none];
+    edge[arrowsize = 0.1];
+    
+    S [label = "母分布: 中心６区=5割"];
+    D [label = "自身のデータ: 6割"];
+    D1[label = "データA: 5.5割"];
+    D2[label = "データB: 4.5割"];
+    D3[label = "データC: 4割"];
+    Est[label = "平均値の分布"]
+
+    S -> D,D1,D2,D3
+    D,D1,D2,D3 -> Est[style = "dashed", dir = "back"]
+}
+```
+
+## Quarto
+
+- 赤色: 実際にわかる/灰色: 実際にはわからない
+
+```{dot}
+digraph {
+    rankdir=TB;
+    newrank=true;
+    node[shape = none];
+    edge[arrowsize = 0.1];
+    
+    S [label = "母分布: 中心６区=5割", fontcolor = "grey"];
+    D [label = "自身のデータ: 6割", fontcolor = "red"];
+    D1[label = "データA: 5.5割", fontcolor = "grey"];
+    D2[label = "データB: 4.5割", fontcolor = "grey"];
+    D3[label = "データC: 4割", fontcolor = "grey"];
+    Est[label = "平均値の分布", fontcolor="grey"]
+
+    S -> D,D1,D2,D3
+    D,D1,D2,D3 -> Est[style = "dashed", dir = "back"]
+}
+```
+
+## チャレンジ
+
+- 平均値の分布を類推できないか?
+
+- 事例数が十分あれ可能!!!
+
+    - 事例数が十分にあれば、平均値の分布は正規分布(ベル型分布)で近似できる
+
+    - 数値実験より、200事例以上を要求

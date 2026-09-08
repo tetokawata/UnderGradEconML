@@ -1,0 +1,475 @@
+---
+title: "予測問題"
+format:
+  typst:
+    fig-format: retina
+    mainfont: "Hiragino Mincho ProN"
+    number-sections: true
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+    embed-resources: true
+execute:
+  echo: false
+  eval: true
+  warning: false
+  message: false
+---
+
+# 予測問題
+
+```{r}
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv")
+```
+
+## 目標
+
+- 「データをモデルに要約する」をイメージとして掴む
+
+  - 研究者主導アプローチの代表格である、OLSを紹介
+
+- 正しい予測モデル評価法を学ぶ
+
+  - 複雑なモデルが必ずしも高性能ではないことを確認
+
+## ロールプレイ
+
+- 大手不動産会社にて、中古マンションの買取査定支援"AI"を開発しろ、と命じられた
+  
+  - 重要な情報は、当該物件の市場価格
+  
+    - 価格は、マンションの持つさまざまな属性(広さ、立地、築年数等)によって異なるため、十分な経験がないと予測困難
+  
+  - これらの属性から、取引価格を予測するモデルを構築したい
+
+## 予測
+
+- 日常的な予測: 自身が経験した/見聞きした事例の傾向から、なんとなく予想する
+
+  - 港区の広い物件は、高い価格である傾向等
+
+- データに基づく予測: 大規模なデータ上での傾向を要約し、予測モデル("AI")を推定
+
+  - 国土交通省が提供する [不動産情報ライブラリ](https://www.reinfolib.mlit.go.jp/) からデータを入手
+
+## データ
+
+```{r}
+Data[1:5,1:5] |> 
+  tinytable::tt()
+```
+
+- Size $=$ 部屋の広さ、Tenure $=$ 築年数、Distance $=$ 駅からの距離(分)
+
+# 予測モデル
+
+## 単純な予測モデル
+
+- とりあえず、部屋の広さ(Size)のみから取引価格を予測するモデルを推定する
+
+  - 予測モデル $=$ $f(Size)$
+  
+    - Sizeを入力すれば、予測取引価格を自動計算してくれる
+
+## 部屋の広さと取引価格の傾向
+
+```{r}
+Data |> 
+  mutate(
+    N = n(),
+    .by = Size
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = Price
+    )
+  ) +
+  geom_bin2d() +
+  theme_bw()
+```
+
+## 情報の要約
+
+- 全く同じSizeでも、取引価格は大きく異なる
+
+  - Size以外の要因が取引価格を左右
+  
+    - 最大値を予測価格とすると、他の要因が上振れた事例から予測しており、一般に不適切
+    
+      - 例: 男性の予測値
+      
+        - $=$ 大谷翔平選手....?
+  
+- 代表的な方法は平均値
+
+## 部屋の広さと平均取引価格の傾向
+
+```{r}
+Data |> 
+  mutate(
+    N = n(),
+    `平均価格` = mean(Price),
+    .by = Size
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = Price
+    )
+  ) +
+  geom_bin2d(
+    alpha = 0.5
+  ) +
+  geom_point(
+    aes(
+      y = `平均価格`
+    )
+  ) +
+  theme_bw()
+```
+
+## 部屋の広さと平均取引価格の傾向
+
+```{r}
+Data |> 
+  mutate(
+    N = n(),
+    `平均価格` = mean(Price),
+    .by = Size
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = Price
+    )
+  ) +
+  geom_point(
+    aes(
+      y = `平均価格`
+    )
+  ) +
+  ggside::geom_xsidehistogram() +
+  theme_bw()
+```
+
+## 小規模事例の平均
+
+- 平均値の計算に用いる事例が少なければ、観察できない要因の上振れ/下振れの影響を受けやすい
+
+  - 岩手県水沢市出身31歳男性の事例は、大谷翔平選手のみ
+
+  - 岩手県水沢市出身31歳男性の所得の平均値
+      
+      - $\simeq$ 大谷翔平選手の所得....?
+
+## モデル化
+
+- データの特徴を"大雑把に"捉える
+
+- 代表例は線型モデル $$Y\simeq \beta_0 + \beta_1X_1+..$$
+
+  - 極力データに適合するように、$\beta$ の値を選ぶ
+  
+## 例
+
+```{r}
+#| echo: true
+
+lm(Price ~ Size, Data)
+```
+
+- Size $=50$ の物件の予測取引価格は、 $$-6.463+1.133\times \underbrace{Size}_{=50}\simeq 50.2$$
+
+## 例
+
+```{r}
+Data |> 
+  mutate(
+    `平均価格` = mean(Price),
+    .by = Size
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = Price
+    )
+  ) +
+  geom_point(
+    aes(
+      y = `平均価格`
+    )
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = FALSE
+  ) +
+  theme_bw()
+```
+
+## 曲線モデル
+
+- 直線以外を当てはめることも容易
+
+- $$Y\simeq \beta_0 + \beta_1X_1+\beta_2\underbrace{X_2}_{X_1^2}$$
+
+## 例
+
+```{r}
+#| echo: true
+
+lm(Price ~ Size + I(Size^2), Data)
+```
+
+## 例
+
+```{r}
+Data |> 
+  mutate(
+    `平均価格` = mean(Price),
+    .by = Size
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = Price
+    )
+  ) +
+  geom_point(
+    aes(
+      y = `平均価格`
+    )
+  ) +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ poly(x,2),
+    se = FALSE
+  ) +
+  theme_bw()
+```
+
+## 重回帰
+
+- 複数の属性も容易に導入できる
+
+  - 平均値の場合、事例数がより少なくなり、非現実的
+  
+- 例 $$Price\simeq$$ $$\beta_0 + \beta_1Size+\beta_2Tenure+... + \beta_3千代田+..$$
+
+  - 千代田: 千代田区であれば1、それ以外であれば0
+
+## 例
+
+```{r}
+#| echo: true
+
+lm(Price ~ Size + Tenure + District, Data)
+```
+
+## Takeaway
+
+- 研究者が指定した線型モデルに、大量の属性情報を集約する
+
+  - OLSは、データに当てはまるようにモデルを推定する
+    
+  - 性能の良いモデルであれば、実務に実装できる
+
+```{mermaid}
+flowchart LR
+  D[データ] --> |推定| M[予測モデル] --> |実装| S[実務]
+```
+
+
+# 予測モデルの性能評価
+
+## 推定と評価
+
+- 予測モデルは、どの程度機能するのか?
+
+  - 実務上極めて重要
+  
+- 事後評価: 実際に実装し業務に活用しながら、確かめる
+
+  - 予測に失敗した場合の被害が軽微な場合は活用可能
+  
+## 事後評価
+
+1. 予測モデルを推定
+
+2. 実際の事例に応用し、実際の価格 (例: 70)と予測価格 (例: 60) を新規に取集
+
+3. 実際と予測価格の乖離を測定: 典型的には $$(実際の価格 - 予測価格)^2=100$$ 
+  
+## 事前評価
+
+- 実務に実装する前に、その予測精度を測定したい
+
+- 課題は、
+
+  - 予測の評価に用いるための、新規の事例が存在しない
+
+## 不適切な事前評価
+
+- 「モデルを推定した事例を、テストにも再利用」したくなるが、間違えた方法
+
+    - 予測ではなく、"確認"であり、過度に高い評価になってしまう
+    
+- 有名な警句: 「Double dipping (２度漬け) には注意」
+    
+
+## 例: 自己啓発本的レトリック
+
+```{mermaid}
+flowchart LR
+  A[データ <br> 大谷翔平は <br> オートミールを食べていた] --> |一般化| D[モデル/仮説 <br> オートミールを食べている人間は <br> 運動能力が高い]
+  D -->|検証| A
+```
+
+## 例
+
+- ２事例のみからなる(しょぼい)データから予測モデルを推定する
+
+```{r}
+tibble(
+  `出身地Y` = c("香川県","大阪府"),
+  `所属大学X` = c("武蔵大学","東京大学")
+  ) |> 
+  gt::gt()
+```
+
+- $f(武蔵大学)=香川県$ と予測モデルを推定
+
+    - 直感的に予測性能は低い
+    
+## 例: 新しい事例によるテスト
+
+- 武蔵大学の学生から新しく10事例を収集し、モデルをテストすると
+
+```{r}
+tibble(
+  `所属大学X` = rep("武蔵大学",5),
+  `出身地Y` = c(rep("東京都",4),"千葉県"),
+  予測値 = rep("香川県",5)
+  ) |> 
+  gt::gt()
+```
+
+- まったく当てはまらないことがわかる
+
+## 例: 同じ事例によるテスト
+
+- 同じ事例に当てはめると
+
+```{r}
+tibble(
+  `所属大学X` = c("武蔵大学"),
+  `出身地Y` = c("香川県"),
+  予測値 = c("香川県")
+  ) |> 
+  gt::gt()
+```
+
+- 一見完璧に当てはまるが、予測ではなく、"確認"しているだけ
+
+## 推奨される事前評価
+
+- データを２分割 (訓練/テスト) にランダム分割する
+
+    - 訓練: 予測モデルを推定する
+    
+    - テスト: 予測性能を評価する
+
+- まぐれあたりによる過大/過小評価を避けるために、テストにも十分な事例数を割く必要がある
+
+  - 典型的には2割程度をテストに配分する
+
+## 実例
+
+```{r}
+set.seed(11)
+
+Group = sample(
+  1:3,
+  nrow(Data),
+  prob = c(0.1,0.001,0.899),
+  replace = TRUE
+)
+
+PredOLS = Data[Group == 1,] |> 
+  lm(
+    Price ~ Tenure + District,
+    data = _
+  ) |> 
+  predict(Data)
+
+Data[Group == 2,] |> 
+  select(Price, Size,District) |> 
+  mutate(
+    OLS = PredOLS[Group == 2] |> round()
+  ) |> 
+  mutate(
+    `Error: OLS` = (Price - OLS)^2
+  ) |> 
+  gt::gt()
+```
+
+## 実例
+
+```{r}
+#| echo: true
+
+set.seed(11)
+
+Group = sample(1:2, nrow(Data), replace = TRUE) # データの分割
+
+FitOLS = lm(
+  Price ~ Tenure + District, 
+  Data, 
+  subset = Group == 1) # OLSモデルの推定
+
+FitMean = lm(
+  Price ~ 1, 
+  Data, 
+  subset = Group == 1) # 平均値の推定
+
+mean((Data$Price - predict(FitOLS,Data))[Group == 2]^2) # OLSのテスト
+
+mean((Data$Price - predict(FitMean,Data))[Group == 2]^2) # 平均値のテスト
+```
+
+## 実例
+
+- 平均値の方が、OLSよりも予測力が低い
+
+    - 事例数が少なく、集団の傾向との乖離が大きい
+    
+## Takeaway
+
+- データの持つ煩雑な情報をモデルに集約し、予測に活用
+
+  - 理論的にも望ましい性質を持つ(次回)
+  
+- モデルの予測性能を評価するためには、新しい事例が必要
+
+  - 典型的なアプローチは、事前にデータ
+  
+## 不適切な事前評価
+
+```{mermaid}
+flowchart LR
+  A[データ] --> |推定| D[予測モデル]
+  D[予測モデル] -->|評価| A
+```
+
+
+## 適切な事前評価
+
+```{mermaid}
+flowchart LR
+  A[データ] --> B[訓練データ] --> |推定| D[予測モデル]
+  A[データ] --> C[テストデータ]
+  D[予測モデル] -->|評価| C
+```

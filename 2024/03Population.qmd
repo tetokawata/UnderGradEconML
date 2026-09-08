@@ -1,0 +1,1227 @@
+---
+title: "統計的性質"
+format:
+  typst:
+    fig-format: retina
+    mainfont: "Hiragino Mincho ProN"
+    number-sections: true
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+    embed-resources: true
+execute:
+  echo: false
+  eval: true
+  warning: false
+  message: false
+---
+
+# 過学習/過剰適合
+
+```{r}
+library(tidyverse)
+set.seed(1)
+
+Data = read_csv("Public/example.csv")
+
+```
+
+## 複雑すぎるモデル
+
+- "現実は複雑なので、複雑なモデルを推定すべき"は、**大間違い**
+
+  - 過学習/過剰適合が生じる
+
+- 推定されたモデルが、事例と過剰に適合してしまう(事例から過度に学び過ぎてしまう)現象
+
+    - 矛盾して聞こえるが、データ分析において最も注意すべき
+    
+    - その理由とともに必ず理解を!!!
+
+## 例
+
+- Price ~ Distance (とその11乗まで)でOLS推定すると？
+
+```{r,dev='ragg_png'}
+
+Data |> 
+  mutate(
+    Mean = mean(Price),
+    .by = c(RoomNumber)
+  ) |> 
+  ggplot(
+    aes(
+      x = RoomNumber,
+      y = Mean
+    )
+  ) +
+  theme_bw() +
+  geom_point() +
+  geom_smooth(
+    aes(
+      y = Price,
+      color = "Price ~ RoomNumber + .. + RoomNumberの4乗"
+    ),
+    method = "lm",
+    se = FALSE,
+    formula = y ~ poly(x,4)
+  )  +
+  geom_smooth(
+    aes(
+      y = Price,
+      color = "Price ~ RoomNumber"
+    ),
+    method = "lm",
+    se = FALSE
+  )  +
+  theme(
+    legend.position = "bottom"
+  ) +
+  ylab("データ上の平均値")
+```
+
+## 過学習/過剰適合
+
+- モデルを複雑化すると、データ上の平均に予測値が必ず近づく
+
+    - データとの矛盾は減る
+    
+- 予測性能は悪化しうる
+
+# くじ引き
+
+## データくじ
+
+- どのような回答を得られるかは、本質的に確率的に決まる ("くじ引き")、と考える
+
+    - データを"くじ引き"で入手し、分析しているため
+
+- "データくじ"がもたらす不確実性は、推定方法を工夫する
+
+## くじ引きの評価
+
+- 仮想的な結果を想像する必要がある: くじを引いた人の半数が
+
+    - 100万円分の商品/残りが10万円の商品 (くじA)
+    
+    - 60万円分の商品/残りが40万円の商品 (くじB)
+
+- 「自分がどちら側になるのかわからない」ことを前提に、どちらのくじを引くのか、くじの特徴を踏まえて考える必要がある
+
+    - くじAの方が当たれば大きい、くじBのばらつきが小さい、平均値（期待値）はAが 0.5 $\times$ 100 + 0.5 $\times$ 10 = 55、Bが 0.5 $\times$ 60 + 0.5 $\times$ 40=50、なのでAが大きい
+
+## データ分析のイメージ
+
+- 不正確なイメージ: 「手元にあるデータを分析する」
+
+- 正確なイメージ: 「**関心のある社会や市場から抽出された**データを、**背後にある社会や市場を理解するために**、分析する」
+
+    - データ取集と データ分析(推定)に分解される
+    
+    - 多くの実践では、「データ収集方法を前提に、推定方法の工夫」を議論する
+    
+## データ収集
+
+- 本質的には運ゲー
+
+    - 多くの公的調査は、ランダムに回答者を選んでいる
+    
+    - コンビニの売り上げデータは、誰がコンビニを利用したかに依存する
+    
+      - コンビニ利用者はある程度ランダムに決まる
+
+## データ分析
+
+- 「運よく綺麗なデータを引いたら上手くいくが、それ以外では上手くいかない手法」が存在することに注意
+
+    - 典型例は、「事例数が少ないのに、複雑なモデルをOLS推定する」
+
+## まとめ
+
+- 推定方法のイメージ $=$ 麻雀やトランプ(7並べなど)の戦略
+
+- データ $=$ 初期の手札/配牌
+
+- 有効な戦略 $=$ 手札がいい時だけではなく、悪かったとしてもそこそこ機能する必要がある
+
+# 母分布
+
+## 母集団
+
+- データ分析における「くじ引き問題」の論点整理のために、母集団を導入
+
+    - 機械学習/統計学/計量経済学、全ての分野で用いられており、今後学ぶ際に必須
+
+    - なぜ"単純すぎる"経済モデルが実用的な場面があるのか、を理解する上でも重要
+    
+        - 直接観察できない概念であり、人間の想像力が必要
+
+## データ分析の根本問題と解決策
+
+- 同じ社会や市場を対象にしたとしても、研究者によって
+
+    - 異なる予測モデルを推定する
+    
+    - モデルについて異なる評価を下す
+    
+        - どんなモデルもまぐれあたりする可能性がある
+
+- 解決策: 全研究者共通の正答と各人の回答を分離
+
+## 解決策: 母集団とサンプリング
+
+- 評価に用いる事例(テストデータ)は、仮想的な集団(母集団)からランダムに選ばれたデータから、さらにランダムに選ばれた考える
+
+    - 母集団全体を用いた評価やモデルが正答
+    
+    - 自身のデータから計算された評価やモデルが、各人の回答
+    
+        - 正答に近い回答が望ましい
+
+- 自身の回答しかわからないので、正答を誰も知らない
+
+    - くじ引きとは決定的に異なる
+
+# 評価
+
+## 正答と回答
+
+- ある予測モデルの性能をどのように評価するか?
+
+- 正答: あるモデルの予測値 $f(X)$ と$Y$との乖離を、母集団において計算 $$(Y-f(X))^2の母集団における平均値$$
+
+- 回答: 自身のテストデータ上で、上記を計算
+
+## 数値例
+
+- 共通の予測モデルの性能を3名の研究者が調べる
+
+    - モデルは共通だが、テストデータは独立して収集
+    
+    - テストデータの事例数は1, 100, 5000, または50000
+
+- $Y$ と $X$ は、[0,1]の値をランダムに選ばれる
+
+- モデルは、100事例の訓練データを用いて、OLS (Y ~ X) で推定される
+
+## 数値例
+
+```{r,dev='ragg_png'}
+set.seed(1000)
+
+CalRSME = function(pred,y){
+  score = (pred-y)^2 |> mean()
+  return(score)
+}
+
+Data = tibble(
+  Y = runif(100),
+  X = runif(100)
+)
+
+Sim = function(i,Data) {
+  set.seed(i)
+  
+  Test1 = tibble(
+    Y = runif(1),
+    X = runif(1)
+  )
+  
+  Test100 = tibble(
+    Y = runif(100),
+    X = runif(100)
+  )
+  
+  
+  Test5000 = tibble(
+    Y = runif(5000),
+    X = runif(5000)
+  )
+  
+  Test50 = tibble(
+    Y = runif(50),
+    X = runif(50)
+  )
+  
+  Score1 = lm(Y ~ X, Data) |> 
+    predict(Test1) |> 
+    CalRSME(Test1$Y)
+  
+  Score100 = lm(Y ~ X, Data) |> 
+    predict(Test100) |> 
+    CalRSME(Test100$Y)
+  
+  Score5000 = lm(Y ~ X, Data) |> 
+    predict(Test5000) |> 
+    CalRSME(Test5000$Y)
+  
+  Score50 = lm(Y ~ X, Data) |> 
+    predict(Test50) |> 
+    CalRSME(Test50$Y)
+  
+  Result = tibble(
+    研究者名 = i |> factor(),
+    Score1,
+    Score50,
+    Score100,
+    Score5000
+  )
+  return(Result)
+}
+
+map_dfr(
+  1:3,
+  function(i){Sim(i,Data)}
+) |> 
+  pivot_longer(
+    cols = c(Score1,Score50,Score100,Score5000)
+  ) |> 
+  mutate(
+    name = str_c("事例数:",str_sub(name,6))
+  ) |> 
+  ggplot(
+    aes(
+      x = value,
+      y = 研究者名,
+      color = 研究者名
+    )
+  ) +
+  theme_bw() +
+  geom_point() +
+  facet_wrap(~ name,
+             ncol = 2) +
+  geom_vline(
+    xintercept = 0.085
+  )
+```
+
+## 解決策: 評価
+
+- 理論的性質を用いて、評価の信頼性を議論できる
+
+- **大数の法則:** テストデータの事例数が十分あれば、回答(データ上での評価)と正答(母集団上での評価)は十分に近い値となる
+
+    - 全員、概ね当たりのくじを引ける
+    
+    - データ全体の２割程度をテストに割くのが一般的
+    
+        - 誤差の範囲も計算できる (後述)
+
+# 予測モデル推定
+
+## 問題
+
+- モデル推定に用いるデータ(訓練データ)も、評価に用いるデータと同じ母集団からランダムに選ばれているとする
+
+- 最善の予測(正答)と完璧な予測を区別できる
+
+    - 「最善の予測に近い予測を生み出す」をガイドラインとして、推定方法を評価できる
+
+## 予測の誤差
+
+- 予測誤差: $Y-\underbrace{f(X)}_{予測値}$
+
+## 完璧な予測
+
+- 重要: 完璧な予測はほぼ不可能
+
+    - 完璧な予測は以下を要求: 全ての事例について $$f(X)=Y$$
+
+    - $X$ 内で個人差があれば、不可能
+
+        - $X=\{年齢、学歴、性別\}$ から $Y=賃金$ を完璧に予測するためには、「同じ年齢、学歴、性別であれば、賃金が全く同じ社会」が前提だが、ありえない
+
+## 最善の予測
+
+- 最善のモデル $=$ $(Y-\underbrace{f(X)}_{予測値})^2$ の母集団における平均値を最小化するモデル
+
+- 母集団における平均値(母平均)が最善の予測モデル
+
+
+## 数値例
+
+- Yの平均値$=X^2$ もし $X< 0.4$ ならば
+
+- Yの平均値$=X^2 +2$ もし $X>= 0.4$ ならば
+
+## 数値例: データ (100事例)
+
+```{r, dev='ragg_png'}
+Sim = function(n,i){
+  set.seed(i)
+  Temp = tibble(
+    X = sample(
+      seq(0,1,0.1),
+      n,
+      replace = TRUE
+    ),
+    TrueY = X^2 + 
+      case_when(
+        X < 0.4 ~ 0,
+        .default = 5
+      ),
+    Y = TrueY + rnorm(n,0,5)
+  )
+  return(Temp)
+}
+
+Sim(50,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Y
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    alpha = 0.2
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  )+
+  ylim(-10,15)+
+  theme(
+    legend.position = "bottom"
+  )
+```
+
+## 数値例: 想像上の母平均の追記
+
+```{r, dev='ragg_png'}
+
+Sim(30,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Y
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    alpha = 0.2
+  ) +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均(=理想の予測モデル)"
+    )
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  )+
+  ylim(-10,15)+
+  theme(
+    legend.position = "bottom"
+  )
+```
+
+- 厳重注意: 青点は、想像上の存在
+
+## 数値例: OLSとの比較
+
+```{r, dev='ragg_png'}
+Sim(30,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = lm(
+      Y ~ X,
+      data = pick(everything())
+    ) |> 
+      predict(
+        pick(everything())
+      )
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Y
+    )
+  ) +
+  geom_point(
+    alpha = 0.2
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = OLS,
+      color = "推定値: Y ~ X"
+    )
+  ) +
+  ylim(-10,15)+
+  theme(
+    legend.position = "bottom"
+  )
+```
+
+## 数値例: OLSとの比較
+
+```{r, dev='ragg_png'}
+Sim(30,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = lm(
+      Y ~ X,
+      data = pick(everything())
+    ) |> 
+      predict(
+        pick(everything())
+      ),
+    OLS6 = lm(
+      Y ~ poly(X,2),
+      data = pick(everything())
+    ) |> 
+      predict(
+        pick(everything())
+      ),
+    研究者 = "研究者1"
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "平均値"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = OLS,
+      color = "Y ~ X"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = OLS6,
+      color = "Y ~ X + X^2"
+    )
+  ) +
+  ylim(-10,15)+
+  theme(
+    legend.position = "bottom"
+  )
+```
+
+# くじ引きとしての復習
+
+- データくじ $\rightarrow$ 推定 $\rightarrow$ 結果、を再確認
+
+- データくじを前提に平均(期待値)的にいい結果を生み出せる方法が望ましい
+
+## 数値例: データくじ結果
+
+```{r,dev='ragg_png'}
+Sim(30,1) |>
+  mutate(
+    データ = "データ1"
+  ) |> 
+  bind_rows(
+    Sim(30,2) |>
+  mutate(
+    データ = "データ2"
+  ) 
+  ) |> 
+  bind_rows(
+    Sim(30,3) |>
+  mutate(
+    データ = "データ3"
+  ) 
+  )|> 
+  bind_rows(
+    Sim(30,4) |>
+  mutate(
+    Y = TrueY,
+    データ = "大当たりデータ"
+  ) |> 
+    distinct(
+      Y,
+      TrueY,
+      X,
+      データ
+    )
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Y
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    alpha = 0.2
+  ) +
+  facet_wrap(
+    ~ データ
+  ) +
+  theme(
+    legend.position = "bottom"
+  )
+```
+
+## 数値例: シンプルなモデル
+
+```{r,dev='ragg_png'}
+Sim(30,1) |>
+  mutate(
+    データ = "データ1"
+  ) |> 
+  bind_rows(
+    Sim(30,2) |>
+  mutate(
+    データ = "データ2"
+  ) 
+  ) |> 
+  bind_rows(
+    Sim(30,3) |>
+  mutate(
+    データ = "データ3"
+  ) 
+  )|> 
+  bind_rows(
+    Sim(30,4) |>
+  mutate(
+    Y = TrueY,
+    データ = "大当たりデータ"
+  ) |> 
+    distinct(
+      Y,
+      TrueY,
+      X,
+      データ
+    )
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Y
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    alpha = 0.2
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = FALSE
+  ) +
+  facet_wrap(
+    ~ データ
+  ) +
+  theme(
+    legend.position = "bottom"
+  )
+```
+
+
+## 数値例: 複雑なモデル
+
+```{r,dev='ragg_png'}
+Sim(30,1) |>
+  mutate(
+    データ = "データ1"
+  ) |> 
+  bind_rows(
+    Sim(30,2) |>
+  mutate(
+    データ = "データ2"
+  ) 
+  ) |> 
+  bind_rows(
+    Sim(30,3) |>
+  mutate(
+    データ = "データ3"
+  ) 
+  )|> 
+  bind_rows(
+    Sim(30,4) |>
+  mutate(
+    Y = TrueY,
+    データ = "大当たりデータ"
+  ) |> 
+    distinct(
+      Y,
+      TrueY,
+      X,
+      データ
+    )
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Y
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    alpha = 0.2
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = FALSE,
+    formula = y ~ poly(x,6)
+  ) +
+  facet_wrap(
+    ~ データ
+  ) +
+  theme(
+    legend.position = "bottom"
+  )
+```
+
+# 事例数とモデルの複雑さ
+
+- 望ましい推定方法は、対象とする社会/市場とデータの収集方法に強く依存する
+
+- ここでは事例数との関係性を確認
+
+## 数値例: OLSとの比較
+
+```{r, dev='ragg_png'}
+TempMean = function(data){
+  Pred = data$Y |> mean()
+  return(Pred)
+}
+
+TempEst = function(data){
+  Pred = lm(
+      Y ~ 1,
+      data = data
+    ) |> 
+      predict(
+        data
+      )
+  return(Pred)
+}
+
+Fig1 = Sim(50,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = TempEst(pick(everything()))
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_smooth(
+    aes(
+      y = OLS,
+      color = "推定値"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,8),
+    se = FALSE
+  ) + 
+  ylim(-5,10) +
+  xlab("50")
+
+Fig2 = Sim(500,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = TempEst(pick(everything()))
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_smooth(
+    aes(
+      y = OLS,
+      color = "推定値"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,8),
+    se = FALSE
+  ) + 
+  ylim(-5,10) +
+  xlab("500")
+
+Fig3 = Sim(5000,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = TempEst(pick(everything()))
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_smooth(
+    aes(
+      y = OLS,
+      color = "推定値"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,8),
+    se = FALSE
+  ) + 
+  ylim(-5,10) +
+  xlab("5000")
+
+
+cowplot::plot_grid(
+  Fig1 + theme(legend.position = "none"),
+  Fig2 + theme(legend.position = "none"),
+  Fig3 + theme(legend.position = "none"),
+  cowplot::get_legend(Fig1))
+```
+
+## 数値例: OLSとの比較
+
+```{r, dev='ragg_png'}
+TempMean = function(data){
+  Pred = data$Y |> mean()
+  return(Pred)
+}
+
+TempEst = function(data){
+  Pred = lm(
+      Y ~ X,
+      data = data
+    ) |> 
+      predict(
+        data
+      )
+  return(Pred)
+}
+
+Fig1 = Sim(50,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = TempEst(pick(everything()))
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_smooth(
+    aes(
+      y = OLS,
+      color = "推定値"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,8),
+    se = FALSE
+  ) + 
+  ylim(-5,10) +
+  xlab("50")
+
+Fig2 = Sim(500,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = TempEst(pick(everything()))
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_smooth(
+    aes(
+      y = OLS,
+      color = "推定値"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,8),
+    se = FALSE
+  ) + 
+  ylim(-5,10) +
+  xlab("500")
+
+Fig3 = Sim(5000,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = TempEst(pick(everything()))
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_smooth(
+    aes(
+      y = OLS,
+      color = "推定値"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,8),
+    se = FALSE
+  ) + 
+  ylim(-5,10) +
+  xlab("5000")
+
+
+cowplot::plot_grid(
+  Fig1 + theme(legend.position = "none"),
+  Fig2 + theme(legend.position = "none"),
+  Fig3 + theme(legend.position = "none"),
+  cowplot::get_legend(Fig1))
+```
+
+
+## 数値例: OLSとの比較
+
+```{r, dev='ragg_png'}
+TempMean = function(data){
+  Pred = data$Y |> mean()
+  return(Pred)
+}
+
+TempEst = function(data){
+  Pred = lm(
+      Y ~ poly(X,6),
+      data = data
+    ) |> 
+      predict(
+        data
+      )
+  return(Pred)
+}
+
+Fig1 = Sim(50,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = TempEst(pick(everything()))
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_smooth(
+    aes(
+      y = OLS,
+      color = "推定値"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,8),
+    se = FALSE
+  ) + 
+  ylim(-5,10) +
+  xlab("50")
+
+Fig2 = Sim(500,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = TempEst(pick(everything()))
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_smooth(
+    aes(
+      y = OLS,
+      color = "推定値"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,8),
+    se = FALSE
+  ) + 
+  ylim(-5,10) +
+  xlab("500")
+
+Fig3 = Sim(5000,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = TempEst(pick(everything()))
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_smooth(
+    aes(
+      y = OLS,
+      color = "推定値"
+    ),
+    method = "lm",
+    formula = y ~ poly(x,8),
+    se = FALSE
+  ) + 
+  ylim(-5,10) +
+  xlab("5000")
+
+
+cowplot::plot_grid(
+  Fig1 + theme(legend.position = "none"),
+  Fig2 + theme(legend.position = "none"),
+  Fig3 + theme(legend.position = "none"),
+  cowplot::get_legend(Fig1))
+```
+
+## 性質: 少数事例
+
+- 限られた事例数 $(N=50)$ では、
+
+    - **平均値は実用的ではない:** データ上の平均値と母平均は、大きく乖離している
+    
+    - **複雑なモデルも実用的ではない:** データ上の平均値に近づいており、母平均から乖離している
+
+- **単純なモデルは実用的: **$Y\sim X$ のOLS推定結果は、母平均に近い
+
+    - 問題点もある: "0.4でジャンプする"という性質を捉えられない
+
+## 性質: 大規模事例
+
+- 事例数が増えると、**複雑なモデルが実用的になる**
+
+    - 母平均とデータ上の平均が近づくので、"複雑なOLS"も、母平均に近づく
+
+- **単純なOLSの予測精度は頭打ち**
+
+    - 母平均の乖離が、ほとんど変化しない
+
+
+## 過学習/過剰適合
+
+- 事例数が少ないと、データ上の平均と母平均は大きく乖離する
+
+    - 複雑なモデルはデータ上の平均に近いが、母平均から乖離する
+    
+        - 最善の予測モデル(母平均)を推定するという目標に対して、（データへの）過剰適合/(データから)過学習
+        
+- 事例数が増えると、過学習/過剰適合は緩和
+
+## まとめ
+
+
+| 事例数/モデルの複雑さ | 複雑 | 単純 |
+|:---------:|:-----:|:------:|
+| 少ない |`r emoji::emojis$emoji[28]` (過剰適合)| `r emoji::emojis$emoji[1]` (現実的な妥協) |
+| 多い |`r emoji::emojis$emoji[5]` (理想的)|`r emoji::emojis$emoji[6]` (不十分なデータ活用)|
+
+- 笑顔 $=$ より良い予測モデル
+
+
+## 実戦への示唆
+
+- 事例数が多ければ複雑なモデルを推定できるが、少なければ単純なモデルで妥協する必要がある
+
+- "推定するモデルの複雑さを適切に変えるべき"
+
+    - 具体的には?
+    
+        - かつては人力で頑張っていたが、難しい
+    
+        - 次のスライドでは、データ主導のアプローチ (LASSO)を紹介
+        
+

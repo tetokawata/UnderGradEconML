@@ -1,0 +1,844 @@
+---
+title: "決定木アルゴリズム"
+subtitle: "最適化"
+author: "川田恵介"
+format: 
+  revealjs:
+    html-math-method: katex
+    css: styles.css
+    slide-number: true
+self-contained: true
+self-contained-math: true
+execute: 
+  warning: false
+  message: false
+  eval: true
+  echo: false
+---
+
+
+```{r SetUp}
+pacman::p_load(
+  tidyverse,
+  SuperLearner,
+  recipes,
+  patchwork,
+  magrittr,
+  DiagrammeR
+)
+
+
+lgr::get_logger("mlr3")$set_threshold("error") # Errorのみを表示
+lgr::get_logger("bbotk")$set_threshold("error") # Errorのみを表示
+
+Data <- read_csv("Public/Example.csv")
+
+X <- Data |> 
+  select(
+    -After,
+    -Price
+  )
+
+Y <- Data$Price
+
+D <- Data$After
+
+set.seed(111)
+SimpleData <- tibble(
+  Group = c(rep(1,2),rep(2,2),rep(3,2)),
+  Y = runif(6,0,10) |> round(0),
+  X = sample(c(1,2,3),6,replace = TRUE)
+  )
+
+SimData <- function(i,n){
+  set.seed(i)
+  X <- seq(-5,5,0.1)
+  N <- n*length(X)
+  TempData <- tibble(
+    X = rep(X,n),
+    U = rnorm(N,0,20)
+    ) |> 
+    mutate(
+      Y = X^2 + U
+    )
+  return(TempData)
+  }
+```
+
+# ここまでのまとめ
+
+- 母平均関数 $E_P[Y|X]$ が理想的な予測モデル
+
+- 理想的な予測モデルに近づけるには、 "適度に"複雑なモデルが必要
+
+## 数値例: 母平均関数
+
+```{r}
+FigPop <- SimData(1,100) |> 
+  mutate(TrueY = Y - U) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = TrueY
+    )
+  ) +
+  theme_bw() +
+  geom_line()+ 
+  labs(
+    x = expression(paste("X")),
+    y = expression(paste(E[P],"[Y|X]"))
+    )
+
+FigPop
+```
+
+
+## 数値例: データ
+
+```{r}
+FigPop <- SimData(1,1000) |> 
+  mutate(TrueY = Y - U) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = TrueY
+    )
+  ) +
+  theme_bw() +
+  geom_line()+ 
+  labs(
+    x = expression(paste("X")),
+    y = expression(paste(E[P],"[Y|X]"))
+    ) +
+    ylim(-50,70)
+
+TempFig <- function(i,n){
+  TempFig <- SimData(i,n) |> 
+    mutate(
+      Pred = rpart::rpart(
+        Y ~ X,
+        SimData(i,n),
+        control = rpart::rpart.control(
+          cp = 0,
+          maxdepth = 2,
+          minbucket = 5,
+          minsplit = 5
+        ) 
+        ) |> 
+        predict(SimData(i,n))
+      ) |> 
+    ggplot(
+      aes(
+        x = X,
+        y = Y
+        )
+      ) +
+    theme_bw() +
+    geom_point(
+      aes(),
+      alpha = 0.5
+    ) +
+    ylab(paste(str_c("ID",i))) +
+    xlab("") +
+    ylim(-50,70)
+  return(TempFig)
+}
+
+N <- 1
+
+FigPop | (TempFig(1,N) + TempFig(2,N))/(TempFig(3,N) + TempFig(4,N))
+```
+
+
+## 数値例: 浅い決定木
+
+```{r}
+FigPop <- SimData(1,1000) |> 
+  mutate(TrueY = Y - U) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = TrueY
+    )
+  ) +
+  theme_bw() +
+  geom_line()+ 
+  labs(
+    x = expression(paste("X")),
+    y = expression(paste(E[P],"[Y|X]"))
+    ) +
+    ylim(-50,70)
+
+TempFig <- function(i,n){
+  TempFig <- SimData(i,n) |> 
+    mutate(
+      Pred = rpart::rpart(
+        Y ~ X,
+        SimData(i,n),
+        control = rpart::rpart.control(
+          cp = 0,
+          maxdepth = 2,
+          minbucket = 5,
+          minsplit = 5
+        ) 
+        ) |> 
+        predict(SimData(i,n))
+      ) |> 
+    ggplot(
+      aes(
+        x = X,
+        y = Y
+        )
+      ) +
+    theme_bw() +
+    geom_point(
+      aes(),
+      alpha = 0.5
+    ) +
+    geom_line(
+      aes(
+        y = Pred
+      )
+    ) +
+    ylab(paste(str_c("ID",i))) +
+    xlab("") +
+    ylim(-50,70)
+  return(TempFig)
+}
+
+N <- 1
+
+FigPop | (TempFig(1,N) + TempFig(2,N))/(TempFig(3,N) + TempFig(4,N))
+```
+
+
+## 数値例: 深い決定木
+
+```{r}
+FigPop <- SimData(1,1000) |> 
+  mutate(TrueY = Y - U) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = TrueY
+    )
+  ) +
+  theme_bw() +
+  geom_line()+ 
+  labs(
+    x = expression(paste("X")),
+    y = expression(paste(E[P],"[Y|X]"))
+    ) +
+    ylim(-50,70)
+
+TempFig <- function(i,n){
+  TempFig <- SimData(i,n) |> 
+    mutate(
+      Pred = rpart::rpart(
+        Y ~ X,
+        SimData(i,n),
+        control = rpart::rpart.control(
+          cp = 0,
+          maxdepth = 10,
+          minbucket = 5,
+          minsplit = 5
+        ) 
+        ) |> 
+        predict(SimData(i,n))
+      ) |> 
+    ggplot(
+      aes(
+        x = X,
+        y = Y
+        )
+      ) +
+    theme_bw() +
+    geom_point(
+      aes(),
+      alpha = 0.5
+    ) +
+    geom_line(
+      aes(
+        y = Pred
+      )
+    ) +
+    ylab(paste(str_c("ID",i))) +
+    xlab("") +
+    ylim(-50,70)
+  return(TempFig)
+}
+
+N <- 1
+
+FigPop | (TempFig(1,N) + TempFig(2,N))/(TempFig(3,N) + TempFig(4,N))
+```
+
+
+## 数値例: 丸暗記
+
+```{r}
+FigPop <- SimData(1,1000) |> 
+  mutate(TrueY = Y - U) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = TrueY
+    )
+  ) +
+  theme_bw() +
+  geom_line()+ 
+  labs(
+    x = expression(paste("X")),
+    y = expression(paste(E[P],"[Y|X]"))
+    ) +
+    ylim(-50,70)
+
+TempFig <- function(i,n){
+  TempFig <- SimData(i,n) |> 
+    mutate(
+      Pred = rpart::rpart(
+        Y ~ X,
+        SimData(i,n),
+        control = rpart::rpart.control(
+          cp = 0,
+          maxdepth = 30,
+          minbucket = 1,
+          minsplit = 1
+        ) 
+        ) |> 
+        predict(SimData(i,n))
+      ) |> 
+    ggplot(
+      aes(
+        x = X,
+        y = Y
+        )
+      ) +
+    theme_bw() +
+    geom_point(
+      aes(),
+      alpha = 0.5
+    ) +
+    geom_line(
+      aes(
+        y = Pred
+      )
+    ) +
+    ylab(paste(str_c("ID",i))) +
+    xlab("") +
+    ylim(-50,70)
+  return(TempFig)
+}
+
+N <- 1
+
+FigPop | (TempFig(1,N) + TempFig(2,N))/(TempFig(3,N) + TempFig(4,N))
+```
+
+# 剪定
+
+- 剪定: 一旦非常に深い木を推定した後に、単純化を行う
+
+## Step 1. 深い木の推定
+
+- 停止条件を緩めると、一般にどこまでもサブサンプル分割が行われる
+
+    - 平均値が異なるサブグループが見つかる限り止まらない
+    
+## 数値例: サイコロゲーム
+
+- ディーラーは、サイコロを5つふり、4つ $(X_1,..,X_4)$ プレイヤーに見せる
+
+    - プレイヤーは残り一つの出目 $Y$ を予測
+    
+- サイコロの出目は、uniform分布 (完全無相関)に決定
+
+    - 理想の予測モデル $g(X_1,..,X_4)$
+
+- "見"を200回行いデータ収集
+
+## 例
+
+```{r}
+set.seed(1)
+
+TempData <- tibble(
+  X1 = sample(1:6, 200, replace = TRUE),
+  X2 = sample(1:6, 200, replace = TRUE),
+  X3 = sample(1:6, 200, replace = TRUE),
+  X4 = sample(1:6, 200, replace = TRUE),
+  Y = sample(1:6, 200, replace = TRUE)
+  )
+
+rpart::rpart(
+  Y ~ .,
+  TempData,
+  control = rpart::rpart.control(
+    cp = 0,
+    minbucket = 1,
+    minsplit = 1,
+    maxdepth = 1
+    )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+
+## 例
+
+```{r}
+rpart::rpart(
+  Y ~ .,
+  TempData,
+  control = rpart::rpart.control(
+    cp = 0,
+    minbucket = 1,
+    minsplit = 1,
+    maxdepth = 4
+    )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+## Setp 2. 剪定
+
+- 分割しても、データへの適合が悪化しずらいサブグループから再結合していく
+
+    - 小規模なサブグループを分割している
+    
+    - 分割しても予測値があまり変化しない
+
+## 例: 剪定
+
+```{r}
+rpart::rpart(
+  Y ~ .,
+  TempData,
+  control = rpart::rpart.control(
+    cp = 0.001,
+    minbucket = 1,
+    minsplit = 1,
+    maxdepth = 4
+    )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+
+## 例: 剪定
+
+```{r}
+rpart::rpart(
+  Y ~ .,
+  TempData,
+  control = rpart::rpart.control(
+    cp = 0.0076,
+    minbucket = 1,
+    minsplit = 1,
+    maxdepth = 4
+    )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+## 最適化問題の活用
+
+- 残された問題は、どこまで剪定するか?
+
+    - 剪定の水準をどのようにコントロールするか?
+
+- 最適化問題に落とし込む
+
+    - 何をやっているか(慣れれば)わかりやすく、自由度が高く、PCにも優しい枠組み
+
+## 最適化問題
+
+- "ある指標を最大化/最小化するように、決定する"枠組み
+
+    - 経済学: 効用最大化問題の結果として財の購入、利潤最大化問題として生産計画、社会厚生最大化として政策
+
+## 練習問題
+
+- 以下を **最小化** するようにサブグループを再結合できない
+
+$$データにおける二乗誤差$$
+
+- 剪定が行われず、複雑になりすぎる
+
+    - 経済学: 公害物質が排出されすぎる、騒音がですぎる
+
+## 罰則付き最適化
+
+- 以下を **最小化** するようにサブグループを再結合
+
+$$データにおける二乗誤差 + \underbrace{\lambda \times \bigr| サブグループの数 \bigr|}_{罰則項}$$
+
+- $\lambda$ : Hyper Parameter (rpart関数では cp)
+
+    - 罰則項 $=$ 複雑性への"課税"
+
+## まとめ
+
+- 「データへの当てはまり改善」は活用
+
+    - そのままでは複雑になりすぎるので、複雑さへの課税でコントロール
+    
+- 経済学でもお馴染みのアイディア
+
+  - "市場"を一切活用していない"都市"は"存在しない"
+  
+  - 完全に"市場"任せにすると問題が生じるので、政策介入(課税/補助金など)をする
+
+# モデルの試作と評価
+
+- 最適な課税水準をどのように決めるのか
+
+- 社会政策とは異なり
+
+    - 目標が明確 (予測性能の改善)
+    
+    - 実験の費用が安い
+
+- 「特定の課税水準のもとでモデルを試作し、中間評価する」を繰り返すことで最適な水準を探り出す
+
+## 評価
+
+- 現代PCを使えば、モデルの試作は簡単
+
+- 難しいのは適切な評価
+
+    - モデルの試作に用いたデータは使用できない
+    
+    - 理論的指標は色々提案されているが (AIC,BICなど)、使える状況は"限られている"
+
+## データ分割法
+
+- 本来やりたいことは、"新しい"事例を予測しやすいモデルを選ぶこと
+
+- 元々のデータをランダムに2分割することで、擬似的に新しいデータを作り出す
+
+    - モデル試作用データ $:=$ 訓練データ
+    
+    - 検証用データ $:=$ 検証データ
+
+## 数値例: 深い決定木
+
+```{r}
+FigPop <- SimData(1,1000) |> 
+  mutate(TrueY = Y - U) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = TrueY
+    )
+  ) +
+  theme_bw() +
+  geom_line()+ 
+  labs(
+    x = expression(paste("X")),
+    y = expression(paste(E[P],"[Y|X]"))
+    ) +
+    ylim(-50,70)
+
+TempFig <- function(i,n){
+  TempFig <- SimData(i,n) |> 
+    mutate(
+      Pred = rpart::rpart(
+        Y ~ X,
+        SimData(i,n),
+        control = rpart::rpart.control(
+          cp = 0,
+          maxdepth = 30,
+          minbucket = 1,
+          minsplit = 1
+        ) 
+        ) |> 
+        predict(SimData(i,n))
+      ) |> 
+    ggplot(
+      aes(
+        x = X,
+        y = Y
+        )
+      ) +
+    theme_bw() +
+    geom_point(
+      aes(),
+      alpha = 0.5
+    ) +
+    geom_line(
+      aes(
+        y = Pred
+      )
+    ) +
+    ylab(paste(str_c("ID",i))) +
+    xlab("") +
+    ylim(-50,70)
+  return(TempFig)
+}
+
+TempTestFig <- function(i,TestI,n){
+  TempFig <- SimData(TestI,n) |> 
+    mutate(
+      Pred = rpart::rpart(
+        Y ~ X,
+        SimData(i,n),
+        control = rpart::rpart.control(
+          cp = 0,
+          maxdepth = 30,
+          minbucket = 1,
+          minsplit = 1
+        ) 
+        ) |> 
+        predict(SimData(TestI,n))
+      ) |> 
+    ggplot(
+      aes(
+        x = X,
+        y = Y
+        )
+      ) +
+    theme_bw() +
+    geom_point(
+      aes(),
+      alpha = 0.5
+    ) +
+    geom_line(
+      aes(
+        y = Pred
+      )
+    ) +
+    ylab(paste(str_c("ID",i))) +
+    xlab("") +
+    ylim(-50,70)
+  return(TempFig)
+}
+
+
+N <- 1
+
+FigPop +
+  xlab("母集団") | 
+  TempFig(1,N) + 
+  xlab("訓練データ") | 
+  TempTestFig(1,100,N) +
+  xlab("訓練データ")
+```
+
+## 数値例: 間違った評価法
+
+```{r}
+FigPop +
+  xlab("母集団") | 
+  TempFig(1,N) + 
+  xlab("訓練データ") | 
+  TempTestFig(1,1,N) +
+  xlab("訓練データ")
+```
+
+
+## データ分割法の手順
+
+1. サンプルをランダムに2分割する
+
+2. 検証対象とする $\lambda$ を設定
+
+    - 訓練データを用いて決定木を推定
+
+    - 検証データでテスト
+
+3. 2を異なる $\lambda$ について繰り返し、最も検証データへの当てはまりが良くなる $\lambda$ を探す
+
+4. 最善の$\lambda$ と全データを用いて、決定木を推定
+
+## まとめ
+
+- 同じデータで、モデル試作と評価はできない!!!
+
+- 資格試験勉強の比喩
+
+    - 過去問を繰り返しとき、答え合わせをすることで、試験対策を学習
+    
+    - 学習した方法の有効性を同じ過去問でテスト...?
+    
+    - 可能であればもしでテスト、不可能ならば過去問の一部は答えを見ずに残しておく
+
+# 交差推定
+
+- 訓練/評価 データが、ランダムに分割されていればOK
+
+    - "役割の固定"は本質ではない
+
+## 交差推定
+
+1. データをいくつか (2,5,10,20など)に分割
+
+2. 第1サブデータ **以外** を用いて予測モデルを試作
+
+3. 第1サブデータに予測値を適用
+
+4. 全てのサブデータに2,3を繰り返す
+
+## 交差検証
+
+- Cross validation
+
+5. 交差推定で導出した予測値と実現値について、予測誤差を推定
+
+
+## 数値例: 単純平均 VS 決定木(深さ2)
+
+```{r}
+SimpleData
+```
+
+## 数値例: 単純平均 VS 決定木(深さ2)
+
+```{r}
+Target <- 1
+
+NewMeanPred <- mean(
+  SimpleData$Y[SimpleData$Group != Target])
+
+  NewTreePred <- rpart::rpart(
+  Y ~ X,
+  SimpleData[SimpleData$Group != Target,],
+  control = rpart::rpart.control(
+    maxdepth = 2,
+    cp = 0,
+    minbucket = 1,
+    minsplit = 1
+  )
+  ) |> 
+  predict(
+    SimpleData
+  )
+
+SimpleData <- SimpleData |> 
+  mutate(
+    PredMean = if_else(
+      Group == Target,
+      NewMeanPred,
+      NA
+      ),
+    PredTree = if_else(
+      Group == Target,
+      NewTreePred,
+      NA
+      )
+    )
+
+SimpleData
+```
+
+## 数値例: 単純平均
+
+```{r}
+Target <- 2
+
+NewMeanPred <- mean(
+  SimpleData$Y[SimpleData$Group != Target])
+
+NewTreePred <- rpart::rpart(
+  Y ~ X,
+  SimpleData[SimpleData$Group != Target,],
+  control = rpart::rpart.control(
+    maxdepth = 2,
+    cp = 0,
+    minbucket = 1,
+    minsplit = 1
+  )
+  ) |> 
+  predict(
+    SimpleData
+  )
+
+SimpleData <- SimpleData |> 
+  mutate(
+    PredMean = if_else(
+      Group == Target,
+      NewMeanPred,
+      PredMean
+      ),
+    PredTree = if_else(
+      Group == Target,
+      NewTreePred,
+      PredTree
+      )
+    )
+
+SimpleData
+```
+
+
+## 数値例: 単純平均
+
+```{r}
+Target <- 3
+
+NewMeanPred <- mean(
+  SimpleData$Y[SimpleData$Group != Target])
+
+NewTreePred <- rpart::rpart(
+  Y ~ X,
+  SimpleData[SimpleData$Group != Target,],
+  control = rpart::rpart.control(
+    maxdepth = 2,
+    cp = 0,
+    minbucket = 1,
+    minsplit = 1
+  )
+  ) |> 
+  predict(
+    SimpleData
+  )
+
+SimpleData <- SimpleData |> 
+  mutate(
+    PredMean = if_else(
+      Group == Target,
+      NewMeanPred,
+      PredMean
+      ),
+    PredTree = if_else(
+      Group == Target,
+      NewTreePred,
+      PredTree
+      )
+    )
+
+SimpleData
+```
+
+
+## 数値例: 単純平均
+
+```{r}
+SimpleData <- SimpleData |> 
+  mutate(
+    ErrorMean = (Y - PredMean)^2,
+    ErrorTree = (Y - PredTree)^2
+    )
+
+SimpleData
+```
+
+- 平均二乗誤差(Mean) `r mean(SimpleData$ErrorMean) |> round(2)`
+
+- 平均二乗誤差(Tree) `r mean(SimpleData$ErrorTree)`
+
+## トレードオフの緩和
+
+- サンプル分割法では、 訓練に多くの事例を割くと、 評価に割ける事例が減り、評価の精度が下がる
+
+- 交差検証では、すべての事例について予測値を計算し、その平均を取るので、評価の精度を確保できる
+
+## まとめ
+
+- 複雑なモデルの推定は、現代的なPC + アルゴリズムであれば容易
+
+- モデルを適切に単純化することに工夫が必要
+
+- ２度漬け禁止の大原則
+
+    - モデルの推定に使ったデータは、評価に原則使わない

@@ -1,0 +1,74 @@
+---
+title: "Untitled"
+format: html
+---
+
+```{r}
+pacman::p_load(
+  tidyverse,
+  quanteda,
+  quanteda.textplots
+  )
+
+Data <- read_tsv("Data/LiteratureList.tsv") |> 
+  filter(str_sub(著者名のよみ,1,1) != "ん") |> 
+  select(
+    論文タイトル,
+    種別
+  ) |> 
+  na.omit() |> 
+  rename(
+    Title = 論文タイトル,
+    Type = 種別
+  )
+
+Tokes <- Data |> 
+  corpus(
+  text_field = "Title") |> 
+  tokens() |>
+  tokens_remove(
+    c(
+      stopwords::stopwords("ja", source = "marimo"),
+      stopwords::stopwords("ja", source = "stopwords-iso")
+      )
+  )
+
+Seqs <- Tokes |> 
+    textstat_collocations(min_count = 5, tolower = FALSE)
+
+Seqs <- Seqs[Seqs$z > 3,]
+
+DFM <- Tokes |> 
+  tokens_select(min_nchar = 2) |> 
+  tokens_compound(Seqs, concatenator = '') |> 
+  dfm() |> 
+  dfm_trim(
+    min_termfreq = 2
+  )
+```
+
+# WordCloud
+
+```{r}
+tibble(
+  Name = names(topfeatures(DFM,153)),
+  Freq = topfeatures(DFM,153)
+  ) |> 
+  wordcloud2::wordcloud2()
+```
+
+# Tree
+
+```{r}
+rpart::rpart(Data$Type ~ .,
+             DFM |> convert("data.frame") |> select(-doc_id),
+             control = rpart::rpart.control(
+               maxdepth = 1,
+               cp = 0,
+               minsplit = 1,
+               minbucket = 1
+             )
+             ) |> 
+  rpart.plot::rpart.plot()
+```
+

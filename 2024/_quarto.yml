@@ -1,0 +1,10 @@
+project:
+  output-dir: Public
+subtitle: "Rによる初めてのデータ分析"
+author: 
+  - name: "川田恵介"
+    email: keisukekawata@iss.u-tokyo.ac.jp
+    url: https://github.com/tetokawata/TargetML
+    affiliation: 
+      - name: 東京大学
+date: now

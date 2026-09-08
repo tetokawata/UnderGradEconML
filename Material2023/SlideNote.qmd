@@ -1,0 +1,444 @@
+---
+title: "決定木アルゴリズム"
+subtitle: "経済学各論(機械学習)"
+author: "川田恵介"
+format: 
+  revealjs:
+    html-math-method: katex
+    css: styles.css
+    slide-number: true
+self-contained: true
+self-contained-math: true
+execute: 
+  warning: false
+  message: false
+  eval: true
+  echo: false
+---
+
+## 概念: 予測モデル
+
+- 予測モデル(関数) : 指定された $X$ について、 $Y$ の予測値を自動回答する"機械 (AI)"
+
+    - 江古田駅から徒歩5分、1LDKの中古マンションの予想販売価格
+
+- データを用いて、作成
+
+## コア・アイディア
+
+- データに適合するモデルを作る
+
+- $X$ 以外の重要な $Y$ の予測要因 $u$ を意識
+
+    - 大量の事例を集約することで、$u$ の影響を減らす
+
+- モデルの複雑さは、独立したデータへの適合で決める
+
+# Get started
+
+```{r SetUp}
+pacman::p_load(
+  tidyverse,
+  rpart,
+  recipes,
+  patchwork
+)
+
+Data <- read_csv("Public/Example.csv")
+
+Group <- sample(
+  1:3,
+  nrow(Data),
+  replace = TRUE
+  )
+
+X <- Data |> 
+  select(
+    -After,
+    -Price
+  )
+
+Y <- Data$Price
+
+D <- Data$After
+```
+
+- アルゴリズム $\simeq$ 推定手法
+
+- 決定木 $=$ 優れた出発点
+
+## 予測モデル(関数)
+
+- $X$ が決まれば、 $Y$ の予測値が決まる
+
+- $g(X)$ と表現
+
+## サブグループ分析
+
+- "もっとも"よく使われるデータ活用方法
+
+- 属性$X$ についてサブグループを定義し、 予測モデル $g(X)$ をサブグループ平均として定義
+
+## 例
+
+```{r SimpleExample1}
+set.seed(1)
+Temp <- tibble(
+  Size = sample(20:100,6,replace = TRUE),
+  Location = c(rep("練馬",3),rep("板橋",3)),
+  DistanceStation = sample(1:20,6,replace = TRUE),
+  Price = sample(10:2000,6,replace = TRUE)
+  )
+
+Temp
+```
+
+- $\{$ 練馬 & 広さ = 30 & 駅からの距離 = 2分 $\}$ 物件の予測販売価格は?
+
+## 例: 立地
+
+```{r SimpleExample2}
+set.seed(1)
+Temp <- tibble(
+  Size = sample(20:100,6,replace = TRUE),
+  Location = c(rep("練馬",3),rep("板橋",3)),
+  DistanceStation = sample(1:20,6,replace = TRUE),
+  Price = sample(10:2000,6,replace = TRUE),
+  SubGroup = if_else(
+    Location == "練馬",
+    "練馬",
+    "板橋"
+  )
+  ) |> 
+  mutate(
+    Prediction = mean(Price) |> round(0),
+    .by = SubGroup
+  )
+
+Temp
+```
+
+## 例: 立地 & 広さ
+
+```{r SimpleExample3}
+set.seed(1)
+Temp <- tibble(
+  Size = sample(20:100,6,replace = TRUE),
+  Location = c(rep("練馬",3),rep("板橋",3)),
+  DistanceStation = sample(1:20,6,replace = TRUE),
+  Price = sample(10:2000,6,replace = TRUE),
+  SubGroup = if_else(
+    Location == "練馬" & Size <= 50,
+    "練馬 & Size <= 50",
+    "Others"
+  )) |> 
+  mutate(
+  SubGroup = if_else(
+    Location == "練馬" & Size > 50,
+    "練馬 & Size > 50",
+    SubGroup
+  ),
+  SubGroup = if_else(
+    Location == "板橋" & Size <= 50,
+    "板橋 & Size <= 50",
+    SubGroup
+  ),
+  SubGroup = if_else(
+    Location == "板橋" & Size > 50,
+    "板橋 & Size > 50",
+    SubGroup
+  )
+  ) |> 
+  mutate(
+    Prediction = mean(Price) |> round(0),
+    .by = SubGroup
+  )
+
+Temp
+```
+
+## "伝統的" VS Data adaptive modelling
+
+- 伝統的アプローチ: 研究者が事前(データを見る前)にサブグループを定義
+
+- Data adaptive: データが決定
+
+- (注) "Bad practice" : 研究者がデータ $\{Y,X\}$ を見ながらサブグループを決定
+
+## 伝統的アプローチ
+
+1. 研究者が事前にサブグループを定義
+
+2. 各サブグループについて、サンプル平均を計算し、予測モデルを構築
+
+- 樹形図で可視化可能
+
+## 実例: 伝統的アプローチ
+
+```{r ExampleClassical1, dev='ragg_png'}
+rpart::rpart(
+  Price ~ I(if_else(Size <= 80,1,0)) + I(if_else(District == "練馬区",1,0)),
+  Data ,
+  control = rpart::rpart.control(
+    maxdepth = 2,
+    cp = 0,
+    minsplit = 1,
+    minbucket = 1
+  )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+## 実例: 伝統的アプローチ
+
+```{r ExampleClassical2, dev='ragg_png'}
+rpart::rpart(
+  Price ~ I(if_else(Size <= 30,1,0)) + I(if_else(District == "練馬区",1,0)),
+  Data ,
+  control = rpart::rpart.control(
+    maxdepth = 2,
+    cp = 0
+  )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+## 伝統的アプローチの問題点
+
+- 予測研究においては、サブグループを定義する際の、 **Practical** guide lineが限られている
+
+    - 比較・因果研究であれば、研究課題により自動的に決まる部分がある (例: 大卒高卒間賃金格差 $=$ 少なくとも大卒/高卒でグループ分け)
+
+- 予測結果は、グループの定義に決定的な影響を受ける
+
+## Data adaptive アプローチ
+
+0. 停止条件を設定
+
+1. データに適合するように、サブグループを設定
+
+2. 各サブグループについて、サンプル平均を計算し、予測モデルを構築
+
+- 課題: データに適合?、具体的には？
+
+## Recursive アルゴリズム
+
+0. 停止条件(最大分割回数、最小サンプルサイズなど)を設定
+
+1. 2分割する: データ内二乗誤差を最小化するように一つの変数、閾値を選ぶ
+
+2. 1度目の分割を"所与"として、２度目の分割を行う
+
+3. 停止条件に達するまで、繰り返す
+
+## 実例: 停止条件 = 2回分割
+
+```{r ExampleDepth2}
+rpart::rpart(
+  Price ~ .,
+  Data,
+  control = rpart::rpart.control(
+    cp = 0,
+    maxdepth = 2
+  )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+## Data adaptive アプローチの課題
+
+- モデルが停止条件に決定的な影響を受ける
+
+- 停止条件を緩める (最大分割回数を増やす, 最小サンプルサイズを減らす) と巨大な (複雑な) 決定木が生成される
+
+## 実例: 停止条件: 3回分割
+
+```{r ExampleDepth3}
+rpart::rpart(
+  Price ~ .,
+  Data,
+  control = rpart::rpart.control(
+    cp = 0,
+    maxdepth = 3
+  )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+
+## 実例: 停止条件: 5回分割
+
+```{r ExampleDepth5}
+rpart::rpart(
+  Price ~ .,
+  Data,
+  control = rpart::rpart.control(
+    cp = 0,
+    maxdepth = 5
+  )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+## Data adaptive アプローチの課題
+
+- "停止条件をどのように決める?"
+
+- 異なる条件のもとで、モデルの試作と中間評価を繰り返し、最善の条件を探す
+
+    - 独立して抽出されたデータへの当てはまり `r emoji::emojis$emoji[3]`
+
+    - 理論的評価指標 (AICなど) `r emoji::emojis$emoji[48]`
+    
+    - データへの当てはまり `r emoji::emojis$emoji[89]`
+
+## 二乗誤差
+
+- "不適合度"を図る代表的指標
+
+$$E[(Y_i - g(X))^2]$$
+
+- 計量経済学、統計学、機械学習、全てで人気指標
+
+
+## サンプル分割法
+
+0. 検証する停止条件群を決める
+
+1. データをモデル試作用データ (Trainingデータ) と中間評価用データ (Validationデータ) にランダム2分割 (8:2 など)
+
+2. ある停止条件について、Trainingデータ**のみ**を用いて、 $g(X)$ を構築
+
+3. Validationデータに当てはめ、予測値を獲得し、二乗誤差を推定
+
+4. 2-3を繰り返し、最も二乗誤差が小さくなる停止条件を探索
+
+## 例
+
+```{r SplitExample1}
+set.seed(1)
+
+TempData <- tibble(
+  X = sample(1:10,6,replace = TRUE),
+  Y = 3*X + rnorm(6,0,20),
+  Type = c(rep("Training",4),rep("Validation",2))
+)
+
+TempData
+```
+
+
+## 例
+
+```{r SplitExample2}
+TempData <- TempData |> 
+  mutate(
+    Mean = mean(TempData[1:4,]$Y),
+    TreeDepth1 = rpart::rpart(
+      Y ~ X,
+      TempData[1:4,],
+      control = rpart::rpart.control(
+        maxdepth = 2,
+        minbucket = 1,
+        minsplit = 1,
+        cp = 0
+      )
+    ) |> 
+      predict(TempData)
+  )
+
+TempData
+```
+
+
+## 例
+
+```{r SplitExample3}
+TempResult <- TempData |> 
+  mutate(
+    MeanMSE = (Y - Mean)^2 |> round(0),
+    TreeMSE = (Y - TreeDepth1)^2 |> round(0)
+  )
+
+TempResult
+```
+
+## 例
+
+- Validateデータ
+
+    - Mean: `r mean(TempResult$MeanMSE[5:6]) |> round(0)`
+    
+    - Tree: `r mean(TempResult$TreeMSE[5:6]) |> round(0)`
+
+- Trainingデータ
+
+    - Mean: `r mean(TempResult$MeanMSE[1:4]) |> round(0)` 
+    
+    - Tree: `r mean(TempResult$TreeMSE[1:4]) |> round(0)`
+
+## まとめ
+
+- モデルの複雑さを決めることは難しい
+
+- 背景情報や理論、"現実をよく見て"決める?
+
+    - 一般に複雑なので、常により巨大な決定木を支持
+
+- データへの当てはまりで決める?
+
+    - 注意しないと、常により巨大な決定木を支持
+
+    - データ外も記述できる理論的枠組みを用いて、問題構造を理解する必要がある
+
+# 予測問題
+
+## 問題設定
+
+- 母集団 $f_P(Y,X)$ よりランダムに抽出したデータ $\{X_i,Y_i\}_{i=1,..,N}$ を用いて、同じ母集団から**新たに**ランダム抽出する事例を予測するモデル $g(X)$ を構築
+
+- Population risk を減らす
+
+## Population risk minimization
+
+$$\min_{g(X)\in\mathbb{G}}E_P[L(Y,g(X))]$$
+
+- $\mathbb{G}$ : 関数の集合
+
+- $L(Y,g(X)) =$ Loss function (研究者が指定)
+
+    - 以下 $L(Y,g(X))=(Y - g(X))^2$ と定式化
+
+## Decomposition on Population Risk
+
+$$E_p[(Y - g(X))^2]=\underbrace{E_p[(Y - E_P[Y|X])^2]}_{Irreducible}$$
+
+$$+ \underbrace{E_p[(E_P[Y|X] - g(X))^2]}_{Reducible}$$
+
+- Irreducible: $X$ が決まった時点で、**どうしようもない**
+
+    - データから観察できない個人差がある以上
+    
+- Reducible: (古典的な)推定問題
+
+## Decomposition on Reducible term
+
+$$E_P[Y|X]-g(X)$$
+
+$$=\underbrace{E_P[Y|X] - g_{\infty}(X)}_{Approximation\ Error}$$
+
+$$+\underbrace{g_{\infty}(X)-g(X)}_{Estimation\ Error}$$
+
+- $g_{\infty}(X)$ : 無限大のサンプルサイズで推定した予測モデル
+
+## 推定問題
+
+- 一般に 
+
+$$Y_i=E_P[Y|X_i]+\underbrace{u_i}_{Y_i - E_P[Y|X_i]}$$
+
+- $\{Y_i,X_i\}$ を観察したとしても、 $u_i$ から $E_P[Y|X_i]$ を区別できない
+
+  - Estimation errorの源泉
+
+  - 評価にも悪影響

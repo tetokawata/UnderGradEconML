@@ -1,0 +1,126 @@
+---
+title: "例: 「人種」間教育格差"
+subtitle: "労働経済学2"
+author:
+  - name: 川田恵介
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+bibliography: "ref.bib"
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: true
+---
+
+## Raw
+
+```{r}
+library(tidyverse)
+library(AER)
+library(estimatr)
+library(hdm)
+library(dotwhisker)
+library(cobalt)
+
+data("GSS7402")
+
+Balance = bal.tab(
+  ethnicity ~ education + age + year + immigrant + 
+    siblings + city16 + lowincome16,
+  GSS7402
+)
+
+love.plot(Balance)
+```
+
+## Balance
+
+```{r}
+Model1 = lm_robust(
+  education ~ ethnicity,
+  GSS7402
+)
+
+Model2 = lm_robust(
+  education ~ ethnicity + age + year + immigrant,
+  GSS7402
+)
+
+Model3 = lm_robust(
+  education ~ ethnicity + (age + year + immigrant)**2 + I(age^2) + I(year^2),
+  GSS7402
+)
+
+Y = GSS7402$education
+D = if_else(
+  GSS7402$ethnicity == "cauc",
+  1,
+  0)
+X = model.matrix(
+  ~ 0 + (age + year + immigrant)**2 + I(age^2) + I(year^2),
+  GSS7402
+)
+
+X = scale(X)
+
+
+Model4 = rlassoEffect(
+  x = X,
+  d = D,
+  y = Y
+)
+
+dwplot(
+  list(Model1,
+       Model2,
+       Model3
+       ),
+  vars_order = c("ethnicitycauc")
+) +
+  xlim(0.4,1.2) +
+  theme_bw()
+```
+
+## Control Moderate
+
+```{r}
+Model5 = lm_robust(
+  education ~ ethnicity + (age + year + immigrant + siblings + city16 + lowincome16)**2 + I(age^2) + I(year^2) + (siblings^2),
+  GSS7402
+)
+
+X = model.matrix(
+  ~ 0 + (age + year + immigrant + siblings + city16 + lowincome16)**2 + I(age^2) + I(year^2) + (siblings^2),
+  GSS7402
+)
+
+X = scale(X)
+
+Model6 = rlassoEffect(
+  x = X,
+  d = D,
+  y = Y
+)
+
+dwplot(
+  list(Model1,
+       Model2,
+       Model3,
+       Model5
+       ),
+  vars_order = c("ethnicitycauc")
+)+
+  xlim(0.4,1.2) +
+  theme_bw()
+```
+

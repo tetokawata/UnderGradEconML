@@ -1,0 +1,540 @@
+---
+title: "予測問題"
+subtitle: "機械学習"
+author: "川田恵介 (keisukekawata@iss.u-tokyo.ac.jp)"
+bibliography: "ref.bib"
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+execute:
+  echo: false
+  eval: true
+  warning: false
+  message: false
+---
+
+# 予測問題
+
+```{r}
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv")
+```
+
+- 観察できる情報 $X=[X_1,..,X_L]$ から、欠損情報 $Y$ を予想するタスク
+
+    - 中古マンションの属性から、市場価格を予想する
+    
+    - 中期経営計画、有価証券報告、口コミサイトの情報から、企業の職場環境を予想する
+    
+
+## 例. 出身都道府県予測
+
+- $X=\{$ 大学 $\}$ から出身都道府県$Y$ を予想する
+
+- 川田が予想する場合、$X=\{武蔵大学\}$ であれば、東京 と答える
+
+    - 武蔵大学に通う学生は、東京圏出身者が多いという背景知識を持つため
+    
+## 例. 出身都道府県予測
+
+- 年齢も予測に活用できる $(X=\{$ 大学,年齢 $\})$ から予想する
+
+- もし22歳と50歳の武蔵大学出身者で、出身地が大きく異なり、それを知っているのであれば、川田は予測を変える
+
+## 例. 出身都道府県予測
+
+- 取り組む課題: 信頼できる背景知識がない場合に、どのように予測するか?
+
+    - データから予測"モデル"を推定する
+
+- 日本人の一定数(例えば1000名)から、年齢、出身大学、出身都道府県を調査しデータ化する
+
+    - "教師"データ
+    
+- 教師データから、予測モデル $f(年齢、出身大学)$ を推定する
+
+    - 予測したい事例の年齢、出身大学を"代入"すれば、予想都道府県を自動計算してくれるモデル
+
+## まとめ
+
+- 予測問題: 「データから予測モデルをどのように推定するか」問題
+
+- ある特徴$X$を持つ集団の$Y$の平均的特徴を推定することが重要
+
+    - 例: 「最近の武蔵大学出身者は、首都圏出身者が多い」
+
+# データの要約: 平均
+
+- データ分析の基本アイディア: ある集団について、十分な事例数をもつデータであれば、以下が成り立つと期待できる
+
+    - 集団の特徴 $\underbrace{\simeq}_{よく似ている}$ データの特徴 
+
+    - データを要約し、その特徴を抽出する
+
+## 丸暗記予測モデル
+
+- データ上での平均値を予測値とする方法
+
+- ($X$ 内での) $Y$ の平均値: $X=x$ を満たす事例(例えば30) $Y_1,..,Y_{30}$ について、以下で計算できる $$f(x)=\frac{Y_1+..+Y_{30}}{\underbrace{30}_{事例数}}$$
+
+- 後述するように、全ての$X$について、事例数 が十分に大きければ(例えば10000)、極めて優れた予測モデル
+
+## 実例: $X=$ Tenure
+
+```{r}
+Data |> 
+  mutate(
+    Pred = lm(
+      Price ~ Tenure,
+      data = pick(Price,Tenure)
+    ) |> 
+      predict(pick(Price,Tenure))
+  ) |> 
+  mutate(
+    MeanY = mean(Price) |> round(1),
+    N = n(),
+    .by = c("Tenure")
+  ) |> 
+  distinct(Tenure,MeanY,N) |> 
+  arrange(Tenure) |> 
+  head(10) |> 
+  gt::gt()
+```
+
+
+## 実例: $X=$ Tenure
+
+```{r}
+Data |> 
+  mutate(
+    Pred = lm(
+      Price ~ Tenure,
+      data = pick(Price,Tenure)
+    ) |> 
+      predict(pick(Price,Tenure))
+  ) |> 
+  mutate(
+    MeanY = mean(Price),
+    N = n(),
+    .by = c("Tenure")
+  ) |> 
+  ggplot(
+    aes(
+      x = Tenure,
+      y = MeanY
+    )
+  ) +
+  geom_point(
+    aes(
+      size = N
+    )
+  ) +
+  theme_bw()
+```
+
+## 実例: $X=$ Tenure/Area
+
+```{r}
+Data |> 
+  mutate(
+    MeanY = mean(Price),
+    N = n(),
+    .by = c("Tenure","Area")
+  ) |> 
+  ggplot(
+    aes(
+      x = Tenure,
+      y = MeanY
+    )
+  ) +
+  geom_point(
+    aes(
+      size = N
+    )
+  ) +
+  theme_bw() +
+  facet_wrap(~ Area)
+```
+
+## 矛盾点
+
+- $X$ の組み合わせが増えると、よりきめの細かい予測ができる
+
+    - $X$ の組み合わせが増えると、非常に少数の事例しか存在しないグループが発生する
+
+    - 集団とデータの特徴が大きく乖離するリスクが高い
+    
+- 例: 30歳の武蔵大学経済学部出身者について、1名しか調査できない
+
+    - 偶然"香川県出身者"を調査すると、$f($武蔵大学,30$)=$香川 という予測モデルを推定しまう
+    
+        
+
+# データの要約: 補助線
+
+- 事例が少ないグループへの対処として、平均値そのものではなく、補助線(線型モデル)を推定するアプローチが有力
+
+- 最小二乗法(OLS)で推定できる
+
+## 補助線による予測モデル
+
+- 平均値に"補助線"を引く
+
+- 例: 平均値に最も適合する直線を引く: 以下を最小化するように直線の切片$\beta_0$と傾き$\beta_1$を決める $$(Yの平均値 - \underbrace{直線}_{\beta_0+\beta_1Size})^2の総和$$
+
+## 実例
+
+```{r}
+Data |> 
+  lm(
+    Price ~ Tenure,
+    data = _
+  )
+
+Data |> 
+  mutate(
+    OLS = lm(
+      Price ~ Tenure,
+      data = pick(Price,Tenure)
+    ) |> 
+      predict(pick(Price,Tenure)) |> 
+      round(1)
+  ) |> 
+  mutate(
+    Mean = mean(Price) |> round(1),
+    N = n(),
+    .by = c("Tenure")
+  ) |> 
+  select(Price,
+         OLS,
+         Mean,
+         N,
+         Tenure) |> 
+  head(10) |> 
+  gt::gt()
+```
+
+
+## 実例
+
+```{r}
+Data |> 
+  mutate(
+    Pred = lm(
+      Price ~ Tenure,
+      data = pick(Price,Tenure)
+    ) |> 
+      predict(pick(Price,Tenure))
+  ) |> 
+  mutate(
+    MeanY = mean(Price),
+    N = n(),
+    .by = c("Tenure")
+  ) |> 
+  ggplot(
+    aes(
+      x = Tenure,
+      y = MeanY
+    )
+  ) +
+  geom_point(
+    aes(
+      size = N
+    )
+  ) +
+  geom_smooth(
+    aes(
+      y = Pred
+    ),
+    method = "lm",
+    se = FALSE
+  ) +
+  theme_bw() 
+```
+
+## OLS: 重回帰
+
+- 平均値に最も適合する"補助線"を引く: 
+
+    - 例: 以下を最小化するように補助線を決める $$(Yの平均値 - \underbrace{補助線}_{\beta_0+\beta_1Size + \beta Area})^2の総和$$
+
+## 実例
+
+```{r, dev='ragg_png'}
+lm(
+  Price ~ Size + Area,
+  data = Data)
+```
+
+
+## 実例
+
+```{r}
+Data |> 
+  mutate(
+    Pred = lm(
+      Price ~ Tenure + Area,
+      data = pick(Price,Tenure,Area)
+    ) |> 
+      predict(pick(Price,Tenure,Area))
+  ) |> 
+  mutate(
+    MeanY = mean(Price),
+    N = n(),
+    .by = c("Tenure","Area")
+  ) |> 
+  ggplot(
+    aes(
+      x = Tenure,
+      y = MeanY
+    )
+  ) +
+  geom_point(
+    aes(
+      size = N
+    )
+  ) +
+  geom_smooth(
+    aes(
+      y = Pred
+    ),
+    se = FALSE
+  ) +
+  theme_bw() +
+  facet_wrap(
+    ~ Area
+  )
+```
+
+## OLS: 曲線
+
+- 平均値に最も適合する"曲線"を引く: 
+
+    - 例: 以下を最小化するように補助線を決める $$(Yの平均値 - \underbrace{補助線}_{\beta_0+\beta_1Size + \beta_2Size^2})^2の総和$$
+    
+    - 例: 以下を最小化するように補助線を決める $$(Yの平均値 - \underbrace{補助線}_{\beta_0+\beta_1Size + .. +\beta_8Size^8})^2の総和$$
+
+## 実例
+
+```{r}
+Data |> 
+  mutate(
+    Pred8 = lm(
+      Price ~ poly(Tenure,8),
+      data = pick(Price,Tenure, Area)
+    ) |> 
+      predict(pick(Price,Tenure,Area)),
+    Pred2 = lm(
+      Price ~ poly(Tenure,2),
+      data = pick(Price,Tenure, Area)
+    ) |> 
+      predict(pick(Price,Tenure,Area))
+  ) |> 
+  mutate(
+    MeanY = mean(Price),
+    N = n(),
+    .by = c("Tenure")
+  ) |> 
+  ggplot(
+    aes(
+      x = Tenure,
+      y = MeanY
+    )
+  ) +
+  geom_point(
+    aes(
+      size = N
+    )
+  ) +
+  geom_smooth(
+    aes(
+      y = Pred2,
+      color = "X + X^2"
+    ),
+    se = FALSE
+  ) +
+  geom_smooth(
+    aes(
+      y = Pred8,
+      color = "X +..+ X^8"
+    ),
+    se = FALSE
+  ) +
+  theme_bw()
+```
+
+## 複雑なモデルの問題点
+
+- 少数事例が持つデータ上の特徴を反映した補助線が引かれる
+
+    - 極端な特徴を持つ事例であれば、集団の特徴からは乖離する
+    
+- 非常に複雑なモデル $=$ 平均値と同じ予測をもたらす
+
+    - 補助線を用いる意味がなくなる
+
+# 予測モデルの性能評価
+
+- 予測モデルを実務に実装する前に、その予測精度を測定する必要がある
+
+    - どんな予測であったとしても、まぐれあたりはしうるので、平均的に上手くいくかどうかを測定したい
+
+## 理想のテスト
+
+- 評価用の事例を新しく(大量に)入手できれば、理想的なテストができる
+
+    - $X$ から$Y$を予測するモデルをデータから推定し、**新しい追加事例を収集し**どの程度当たるか確かめる
+
+- もし可能であれば、代表的な評価指標を計算すれば良い。例えば二乗誤差 $$(Y - f(X))^2の新しいデータについての平均$$
+
+    - 評価用の新しい事例を収集するのは難しい
+
+## 望ましくないテスト
+
+- 新しい事例なしでテストできないか?
+
+- 「モデルを推定した事例を、テストにも再利用」したくなるが、間違えた方法
+
+    - 「非常に高い予測性能を持つ」と誤って評価してしまう
+    
+- 有名な警句: 「Double dipping (２度漬け) には注意」
+    
+## 例
+
+- ２事例のみからなる(しょぼい)データから予測モデルを推定する
+
+```{r}
+tibble(
+  Y = c("香川県","大阪府"),
+  X = c("武蔵大学","東京大学")
+  ) |> 
+  gt::gt()
+```
+
+- $f(武蔵大学)=香川県, f(東京大学)=大阪府$ と予測するモデルを作る
+
+    - 直感的に予測性能は低い
+    
+## 例: 新しい事例によるテスト
+
+- 武蔵大学の学生から新しく10事例を収集し、モデルをテストすると
+
+```{r}
+tibble(
+  X = rep("武蔵大学",5),
+  Y = c(rep("東京都",4),"千葉県"),
+  予測値 = rep("香川県",5)
+  ) |> 
+  gt::gt()
+```
+
+- まったく当てはまらないことがわかる
+
+## 例: 同じ事例によるテスト
+
+- 同じ事例に当てはめると
+
+```{r}
+tibble(
+  X = c("武蔵大学"),
+  Y = c("香川県"),
+  予測値 = c("香川県")
+  ) |> 
+  gt::gt()
+```
+
+- 一見完璧に当てはまる
+
+## 重大な注意点: 仮説創設と検証の分離
+
+- "仮説を作る際に用いた事例は、仮説の検証に使用できない"
+
+- 伝記、インタビュー、自己啓発本を読む際にも注意
+
+## データ分割によるテスト
+
+- データを２分割 (訓練/テスト) にランダムに分割する
+
+    - 訓練: 予測モデルを推定する
+    
+    - テスト: 予測性能を評価する
+
+## 例
+
+```{r}
+set.seed(11)
+
+Group = sample(
+  1:3,
+  nrow(Data),
+  prob = c(0.1,0.001,0.899),
+  replace = TRUE
+)
+
+PredOLS = Data[Group == 1,] |> 
+  lm(
+    Price ~ Tenure + District,
+    data = _
+  ) |> 
+  predict(Data)
+
+PredMean = Data[Group == 1,] |> 
+  lm(
+    Price ~ factor(Tenure)*factor(District),
+    data = _
+  ) |> 
+  predict(
+    Data
+  )
+
+Data[Group == 2,] |> 
+  select(Price, Size,District) |> 
+  mutate(
+    OLS = PredOLS[Group == 2] |> round(),
+    Mean = PredMean[Group == 2] |> round()
+  ) |> 
+  mutate(
+    `Error: OLS` = (Price - OLS)^2,
+    `Error: Mean` = (Price - Mean)^2
+  ) |> 
+  gt::gt()
+```
+
+## 実例
+
+```{r}
+#| echo: true
+
+set.seed(11)
+
+Group = sample(1:2, nrow(Data), replace = TRUE) # データの分割
+
+FitOLS = lm(
+  Price ~ Tenure + District, 
+  Data, 
+  subset = Group == 1) # OLSモデルの推定
+
+FitMean = lm(
+  Price ~ factor(Tenure)*factor(District), 
+  Data, 
+  subset = Group == 1) # 平均値の推定
+
+mean((Data$Price - predict(FitOLS,Data))[Group == 2]^2) # OLSのテスト
+
+mean((Data$Price - predict(FitMean,Data))[Group == 2]^2) # 平均値のテスト
+```
+
+## 実例
+
+- 平均値の方が、OLSよりも予測力が低い
+
+    - 事例数が少なく、集団の傾向との乖離が大きい        

@@ -1,0 +1,650 @@
+---
+title: "Double/Debiased Machine Learning"
+subtitle: "機械学習入門"
+author:
+  - name: 川田恵介
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+bibliography: "ref.bib"
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: false
+---
+
+
+# バランス後の比較: 復習
+
+- 因果推論/格差/比較研究における中心的な手法
+
+## 目標: バランス後の比較
+
+- $X$ の分布についての差を補正した後の、平均値の比較
+
+- $\theta(1) - \theta(0)$
+
+- $$\theta(d)=\underbrace{E[Y|d,X]\times Target(X) のXについての和}_{\int E[Y|d,X]\times Target(X)dX}$$
+
+- $Target(X)$ : 研究者が指定する集計用荷重
+
+## 例: Sizeのバランス
+
+```{r, dev='ragg_png'}
+Data|> 
+  filter(
+    Size %in% c(75,90)
+  ) |> 
+  mutate(
+    TotalN = n()
+  ) |> 
+  mutate(
+    `Yの平均値` = mean(Price) |> round(1),
+    N = n(),
+    .by = c(D,Size)
+  ) |> 
+  mutate(
+    Target = (n()/TotalN) |> round(4),
+    .by = c(Size)
+  ) |> 
+  distinct(
+    `Yの平均値`,
+    D,
+    Size,
+    N,
+    Target
+  ) |> 
+  mutate(
+    `データ上の割合` = (N/sum(N)) |> round(3),
+    .by = D
+  ) |> 
+  arrange(
+    Size,
+    D
+  ) |> 
+  gt::gt() |> 
+  gt::tab_style(
+    style = gt::cell_fill(color = "lightblue"),
+    locations = gt::cells_body(
+      rows = D == 1
+    )
+  )
+```
+
+## OLS
+
+- $Y\sim D + Size + Tenure$ をOLSで推定すると、 
+
+- $\beta_D=$
+
+    - Size, Tenureの平均値を$D$間でバランスさせた上での$Y$ の平均値の比較結果
+
+## OLS
+
+- $Y\sim D + Size + Tenure + Size^2 + Tenure^2 + Size\times Tenure$ をOLSで推定すると、 
+
+- $\beta_D=$
+
+    - Size, Tenureの平均値と分散、共分散を$D$間でバランスさせた上での$Y$ の平均値の比較結果
+
+## OLS
+
+- $$Y\sim D + \underbrace{f(Size,Tenure)}_{非常に複雑なモデル}$$ をOLSできれば、
+
+- Size,Tenureの分布を完璧にバランスできる
+
+- 問題: モデルを"長くしすぎると"、推定精度が低下する  ([07MomentBalance参照](https://github.com/tetokawata/UnderGradEconML/blob/main/Public/07MomentBalance.pdf))
+
+## Post LASSO
+
+- 重要な$X$をデータ主導で選択する
+
+- 問題: 線型モデルが、平均値の優れたモデルとは限らない ([08Aggregation参照](https://github.com/tetokawata/UnderGradEconML/blob/main/Public/08Aggregation.pdf))
+
+# バランス後の比較: 予測モデルの直接活用
+
+```{r}
+set.seed(111)
+
+library(tidyverse)
+
+EstBoost <- function(train_y, train_x, test_x) {
+  group = sample(
+    1:2,
+    length(train_y),
+    replace = TRUE,
+    prob = c(0.8,0.2)
+  )
+  
+  train = lightgbm::lgb.Dataset(
+    train_x[group == 1,] |> data.matrix(),
+    label = train_y[group == 1]
+  )
+  
+  validate = lightgbm::lgb.Dataset(
+    train_x[group == 2,] |> data.matrix(),
+    label = train_y[group == 2]
+  )
+  
+  pred = lightgbm::lgb.train(
+    data = train,
+    params = list(
+      objective = "regression",
+      learning_rate = 0.001
+    ),
+    nrounds = 50000,
+    valids = list(test = validate),
+    early_stopping_rounds = 100,
+    verbose = 0
+    ) |> 
+    predict(test_x |> 
+              data.matrix())
+  
+  return(pred)
+}
+
+
+Data = read_csv("Public/Example.csv") |> 
+  mutate(
+    EmebedSize = mean(Size),
+    EmbedTenure = mean(Tenure),
+    EmbedDistance = mean(Size),
+    .by = District
+  )
+
+Group = sample(
+  1:2,
+  nrow(Data),
+  replace = TRUE
+)
+
+Data$HatY_D1_OLS = lm(
+  Price ~ (Tenure + Size + Distance + District)**2 + 
+    splines::bs(Tenure,3) + splines::bs(Size,3) + splines::bs(Distance,3), 
+  Data,
+  subset = Group == 1 & D == 1
+  ) |> 
+  predict(Data) |> 
+  as.numeric()
+
+Data$HatY_D0_OLS = lm(
+  Price ~ (Tenure + Size + Distance + District)**2 + 
+    splines::bs(Tenure,3) + splines::bs(Size,3) + splines::bs(Distance,3), 
+  Data,
+  subset = Group == 1 & D == 0
+  ) |> 
+  predict(Data) |> 
+  as.numeric()
+
+Data$HatD_OLS = lm(
+  D ~ (Tenure + Size + Distance + District)**2 + 
+    splines::bs(Tenure,3) + splines::bs(Size,3) + splines::bs(Distance,3), 
+  Data,
+  subset = Group == 1
+  ) |> 
+  predict(Data) |> 
+  as.numeric()
+
+Data$HatY_D1_RF = ranger::ranger(
+  Price ~ Tenure + Size + Distance + EmebedSize + EmbedTenure + EmbedDistance,
+  Data[Group == 1 & Data$D == 1,]
+  ) |> 
+  predict(Data) |> 
+  magrittr::extract2("predictions") |> 
+  as.numeric()
+
+Data$HatY_D0_RF = ranger::ranger(
+  Price ~ Tenure + Size + Distance + EmebedSize + EmbedTenure + EmbedDistance,
+  Data[Group == 1 & Data$D == 0,]
+  ) |> 
+  predict(Data) |> 
+  magrittr::extract2("predictions") |> 
+  as.numeric()
+
+Data$HatD_RF = ranger::ranger(
+  D ~ Tenure + Size + Distance + EmebedSize + EmbedTenure + EmbedDistance,
+  Data[Group == 1,]
+  ) |>
+  predict(Data) |> 
+  magrittr::extract2("predictions") |> 
+  as.numeric()
+
+Data$HatY_D1_GBM = EstBoost(
+  train_y = Data$Price[Group == 1 & Data$D == 1],
+  train_x = Data[Group == 1 & Data$D == 1,] |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    ),
+  test_x = Data |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    )
+)
+
+Data$HatY_D0_GBM = EstBoost(
+  train_y = Data$Price[Group == 1 & Data$D == 0],
+  train_x = Data[Group == 1 & Data$D == 0,] |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    ),
+  test_x = Data |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    )
+)
+
+Data$HatD_GBM = EstBoost(
+  train_y = Data$D[Group == 1],
+  train_x = Data[Group == 1,] |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    ),
+  test_x = Data |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    )
+)
+
+
+Data$HatY_D1 = lm(Price ~ HatY_D1_RF + HatY_D1_OLS + HatY_D1_GBM,
+   Data,
+   subset = Group == 2 & D == 1) |> 
+  predict(Data)|> 
+  as.numeric()
+
+Data$HatY_D0 = lm(Price ~ HatY_D0_RF + HatY_D0_OLS + HatY_D0_GBM,
+   Data,
+   subset = Group == 2 & D == 0) |> 
+  predict(Data)|> 
+  as.numeric()
+
+Data$HatD = lm(D ~ HatD_OLS + HatD_RF + HatD_GBM,
+   Data,
+   subset = Group == 2) |> 
+  predict(Data)|> 
+  as.numeric()
+```
+
+## $Y$の予測ベース
+
+- Stackingなどを駆使することで、より高い精度の$Y$の予測モデルを推定できる
+
+    - 精度が高い $=$ より $Y$ の平均値に近い
+    
+    - $Y$ の予測モデルを直接活用できないか?
+
+## T learner
+
+- 古典的なアイディア [@varian2014big]: $D=1$ の事例のみを用いた $Y$ の予測モデルと $D=0$のみを用いたモデルの予測値の差を集計する $$[D=1を使ったYの予測値 - D=0を使ったYの予測値]の平均値$$
+
+    - ２つのモデルを用いるため、T - Learnerと呼ばれる
+
+## 例: RandomForestの活用
+
+```{r}
+#| echo: true
+library(ranger)
+
+Data_D1 = Data[Data$D == 1,]
+Data_D0 = Data[Data$D == 0,]
+
+Model_D1 = ranger(Price ~ Size + Distance + Tenure, Data_D1)
+Model_D0 = ranger(Price ~ Size + Distance + Tenure, Data_D0)
+
+Data$PredY_D1 = predict(Model_D1,Data)$predictions
+Data$PredY_D0 = predict(Model_D0,Data)$predictions
+
+```
+
+## 例
+
+```{r}
+Data |>
+  select(
+    Price,
+    D,
+    Size,
+    Tenure,
+    Distance,
+    PredY_D1,
+    PredY_D0
+  ) |> 
+  mutate(
+    Difference = PredY_D1 - PredY_D0
+  ) |> 
+  head(10) |> 
+  gt::gt() |>
+  gt::fmt_number(
+    columns = c(PredY_D1,PredY_D0,Difference),
+    decimals = 2,
+    use_seps = FALSE
+  )
+```
+
+## 問題点
+
+- $Y$ の平均値のモデルとしての性能に強く依存
+
+- OLSなどの伝統的手法も機械学習的手法も、一般的には要求される水準を満たさない
+
+    - OLSなどの伝統的な手法は、研究者による定式化（の誤り）が推定結果に大きな悪影響を与える
+    
+    - Stackingなどを用いたデータ主導のモデル化は、研究者による定式化への依存は減らせるが、データへの依存度が高くなる
+    
+## 問題点: 詳細
+
+- 推定値が満たして欲しい性質の代表例
+
+    - 無限大の事例数を持つデータを用いることができれば、母集団におけるバランス後の比較結果と一致する
+    
+        - 研究者による定式化に依存するOLSなどでは、保証することは一般に難しい
+    
+    - ある程度の事例数があれば、信頼区間を近似計算できる
+    
+        - データへの依存が大きい機械学習を活用すると、保証することは一般に難しい
+
+## カリブーレション
+
+- テストデータにおいて、予測値と「平均値」の乖離を示す
+
+    - 予測値と$Y$の乖離ではない (03Population)
+
+- 予測値に応じて、テストデータを等分割する
+
+    - 各サブグループごとに、$Y$と予測値の平均値を算出
+
+- 理想的な予測モデルであれば、一致するはず
+
+## 例: カリブレーション
+
+```{r}
+Data |> 
+  filter(
+    Group == 2 &
+      D == 1
+  ) |> 
+  mutate(
+    Bin = cut(
+      HatY_D1, 
+      quantile(HatY_D1, probs = seq(0,1,0.1)),
+      include.lowest = TRUE)
+  ) |> 
+  mutate(
+    平均価格 = mean(Price),
+    平均予想 = mean(HatY_D1),
+    .by = Bin
+  ) |> 
+  select(
+    平均価格,
+    平均予想,
+    Bin
+  ) |> 
+  distinct(
+    Bin,
+    平均価格,
+    平均予想
+  ) |> 
+  arrange(平均予想) |> 
+  gt::gt() |> 
+  gt::fmt_number(decimals = 2)
+```
+
+## 例: 予測誤差
+
+```{r}
+Fig1 = Data |> 
+  filter(
+    Group == 2 &
+      D == 1
+  ) |> 
+  mutate(
+    Bin = cut(
+      HatY_D1, 
+      quantile(HatY_D1, probs = seq(0,1,0.1)),
+      include.lowest = TRUE)
+  ) |> 
+  mutate(
+    BinY = mean(Price),
+    BinX = mean(HatY_D1),
+    .by = Bin
+  ) |> 
+  ggplot(
+    aes(
+      x = BinX,
+      y = BinY
+    )
+  ) +
+  geom_point() +
+  geom_abline(
+    intercept = 0,
+    slope = 1
+  ) +
+  xlab("E[Y|D=1,X]") +
+  theme_bw() +
+  ylab("")
+
+Fig2 = Data |> 
+  filter(
+    Group == 2 &
+      D == 0
+  ) |> 
+  mutate(
+    Bin = cut(
+      HatY_D0, 
+      quantile(HatY_D1, probs = seq(0,1,0.1)),
+      include.lowest = TRUE)
+  ) |> 
+  mutate(
+    BinY = mean(Price),
+    BinX = mean(HatY_D0),
+    .by = Bin
+  ) |> 
+  ggplot(
+    aes(
+      x = BinX,
+      y = BinY
+    )
+  ) +
+  geom_point() +
+  geom_abline(
+    intercept = 0,
+    slope = 1
+  ) +
+  xlab("E[Y|D=0,X]") +
+  theme_bw() +
+  ylab("")
+
+cowplot::plot_grid(Fig1,Fig2)
+```
+
+
+# バランス後の比較: 補強
+
+- $Y$ の予測モデルのみに頼るアプローチは、(1) 研究者によるモデル設定、 (2) データの偏り、のどちらかの悪影響を強く受けてしまう
+
+- 「予測モデルによるダブルチェック」を活用し、悪影響を低下させることができる
+
+## 補強された推定値
+
+- $$[D=1を使ったYの予測値 - D=0を使ったYの予測値]の平均値$$ $$+予測モデルのミスの補正$$
+
+## 補正
+
+- 予測モデルと平均値の乖離を補正する
+
+- ある$X,D=d$の組み合わせについての、平均値と予想値との乖離 $$Gap(d,X)=Yの平均値 - Yの予測値$$
+
+- 補正: $d=1/0$ での平均的な乖離の違い $$Target(X)\times [G(1,X) - G(0,X)]の総和$$
+
+## Augmented inverse propensity weighted (AIPW) 
+
+
+
+
+$$f(X)G(1,X)=f(X)\frac{Y-g(Y|1,X)}{Nf(1)}$$
+
+$$\frac{1}{f(1|X)}\frac{Y-g(Y|1,X)}{N}=\frac{f(X)}{f(X|1)}\frac{Y-g(Y|1,X)}{f(1)N}$$
+
+## Key Quantitiy: Balancing Weight
+
+- $$\theta(d) = E[Y|d,X]\times \underbrace{f(X|d)}_{実際の分布}\times \omega(X,d)の総和$$ を達成する荷重 $\omega(X,d)$
+
+- 定義より $$f(X|d)\omega(X,d)=Target(X)$$
+
+    - $$\omega(X,d)=\frac{Target(X)}{f(X|d)}$$
+
+## Balancing Weight = IWP
+
+- 条件付き分布の定義を使用 [(wiki)](https://ja.wikipedia.org/wiki/%E6%9D%A1%E4%BB%B6%E4%BB%98%E3%81%8D%E7%A2%BA%E7%8E%87%E5%88%86%E5%B8%83)
+
+- $$\underbrace{\frac{f(X)}{f(X|D=d)}}_{Balancing\ Weight}=\frac{f(X)}{\frac{f(X,D=d)}{f(D=d)}}=\frac{f(D=d)}{\underbrace{f(D=d|X)}_{Propensity\ Score}}$$
+
+## 例
+
+```{r, dev='ragg_png'}
+estimatr::lm_robust(
+  Price ~ D,
+  Data
+  ) |> 
+  generics::tidy() |> 
+      filter(
+        term == "D"
+      ) |> 
+  mutate(
+    Method = "No Balance"
+  ) |> 
+  bind_rows(
+    estimatr::lm_robust(
+      (HatY_D1 - HatY_D0) ~ 1,
+      Data
+    ) |> 
+      generics::tidy() |> 
+  mutate(
+    Method = "挿入法",
+    conf.low = estimate,
+    conf.high = estimate
+  )
+  ) |> 
+  bind_rows(
+    estimatr::lm_robust(
+      Score ~ 1,
+      Data |> 
+        mutate(
+          Score = HatY_D1 - HatY_D0 +
+            case_when(
+              D == 1 ~ (Price - HatY_D1)/HatD,
+              D == 0 ~ -(Price - HatY_D0)/(1 - HatD)
+            )
+        ),
+      subset = Group == 2
+    ) |> 
+      generics::tidy() |> 
+  mutate(
+    Method = "AIPW"
+  )
+  ) |> 
+  ggplot(
+    aes(
+      x = estimate,
+      xmin = conf.low,
+      xmax = conf.high,
+      y = Method
+    )
+  ) +
+  theme_bw() +
+  geom_pointrange() +
+  geom_vline(
+    xintercept = 0
+  )
+```
+
+## 例
+
+```{r, dev='ragg_png'}
+
+Adjust = qnorm(1 - (0.05)/(2*3))
+
+estimatr::lm_robust(
+  Score ~ 0 + Area,
+  Data |> 
+    mutate(
+      Score = HatY_D1 - HatY_D0 +
+        case_when(
+          D == 1 ~ (Price - HatY_D1)/HatD,
+          D == 0 ~ -(Price - HatY_D0)/(1 - HatD)
+          )
+      ),
+  subset = Group == 2
+  ) |> 
+  generics::tidy() |> 
+  ggplot(
+    aes(
+      x = estimate,
+      xmin = conf.low,
+      xmax = conf.high,
+      y = term
+    )
+  ) +
+  theme_bw() +
+  geom_pointrange(
+    aes(
+      linewidth = "補正なし"
+    )
+  ) +
+  geom_pointrange(
+    aes(
+      xmin = estimate - Adjust*std.error,
+      xmax = estimate + Adjust*std.error,
+      linewidth = "補正"
+    )
+  ) +
+  geom_point(
+    aes(
+      color = "点推定値"
+    )
+  ) +
+  ylab("")
+```
+
+## Reference
+
+

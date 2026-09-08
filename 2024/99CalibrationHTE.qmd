@@ -1,0 +1,187 @@
+---
+title: "Untitled"
+fformat: 
+    typst:
+      fig-format: retina
+      section-numbering: 1.1.1.
+      bibliography: "CleanRef.bib"
+      bibliographystyle: "apa"
+---
+
+# ReadMe
+
+- Implement @van2023causal
+
+# SetUp
+
+```{r}
+library(tidyverse)
+library(recipes)
+
+isoreg_with_xgboost <- function(x, y, max_depth = 15, min_child_weight = 20, weights = NULL) {
+  if(is.null(weights)) {
+    weights <- rep(1, length(y))
+  }
+  # Create an XGBoost DMatrix object from the data, including weights
+  data <- xgboost::xgb.DMatrix(data = as.matrix(x), label = as.vector(y), weight = weights)
+
+  # Set parameters for the monotonic XGBoost model
+  params <- list(
+    max_depth = max_depth,
+    min_child_weight = min_child_weight,
+    monotone_constraints = 1,  # Enforce monotonic increase
+    eta = 1,
+    gamma = 0,
+    lambda = 0
+  )
+
+  # Train the model with one boosting round
+  iso_fit <- xgboost::xgb.train(params = params, data = data, nrounds = 1)
+
+  # Prediction function for new data
+  fun <- function(x) {
+    data_pred <- xgboost::xgb.DMatrix(data = as.matrix(x))
+    pred <- predict(iso_fit, data_pred)
+    return(pred)
+  }
+
+  return(fun)
+}
+
+Data = read_csv("Public/Example.csv")
+
+Y = Data$Price |> log()
+D = Data$D
+
+X = Data |> 
+  recipe(
+    ~ Size + Distance + Tenure + District,
+    data = _
+  ) |> 
+  step_interact(
+    ~ all_predictors():all_predictors()
+  ) |> 
+  step_poly(
+    Size,
+    Distance,
+    Tenure,
+    degree = 2
+  ) |> 
+  step_dummy(
+    all_nominal_predictors(),
+    one_hot = TRUE
+  ) |> 
+  prep() |> 
+  bake(
+    new_data = NULL,
+    composition = "matrix"
+  )
+
+Group = sample(
+  1:2,
+  Y |> length(),
+  replace = TRUE
+)
+
+```
+
+# Nuisance
+
+```{r}
+Oritinal = ddml::ddml_ate(
+  y = Y[Group == 1],
+  D = D[Group == 1],
+  X = X[Group == 1,],
+  learners = list(
+    list(fun = ddml::ols),
+    list(fun = ddml::mdl_ranger),
+    list(fun = ddml::mdl_glmnet)
+  ),
+  shortstack = TRUE
+)
+
+Calibration = ddml::ddml_ate(
+  y = Y[Group == 2],
+  D = D[Group == 2],
+  X = X[Group == 2,],
+  learners = list(
+    list(fun = ddml::ols),
+    list(fun = ddml::mdl_ranger),
+    list(fun = ddml::mdl_glmnet)
+  ),
+  shortstack = TRUE
+)
+
+TauOLS = lm(as.numeric(Oritinal$psi_b) ~ Size + Distance + Tenure + District, 
+   Data[Group == 1,]) |> 
+  predict(Data[Group == 2,])
+
+TauRF = ranger::ranger(as.numeric(Oritinal$psi_b) ~ Size + Distance + Tenure + District, 
+   Data[Group == 1,]) |> 
+  predict(Data[Group == 2,]) |> 
+  magrittr::extract2("predictions")
+
+TauStack = lm(Calibration$psi_b ~ TauOLS + TauRF)$fitted |> as.numeric()
+```
+
+```{r}
+CalibrationIso = isoreg(
+  TauStack,
+  as.numeric(Calibration$psi_b)) |> 
+  as.stepfun()
+
+CalibrationIsoValue = CalibrationIso(TauStack)
+
+CalibrationBoost = isoreg_with_xgboost(as.numeric(Calibration$psi_b),TauStack)
+
+CalibrationBoostValue = CalibrationBoost(TauStack)
+
+
+boxplot(CalibrationIsoValue,
+        CalibrationBoostValue,
+        TauStack,
+        TauOLS,
+        TauRF)
+
+Result = Data |> 
+  filter(
+    Group == 2
+  ) |> 
+  mutate(
+    TauStack,
+    TauOLS,
+    TauRF,
+    CalibrationIsoValue,
+    CalibrationBoostValue
+  )
+
+Result |> 
+  ggplot(
+    aes(
+      x = CalibrationIsoValue,
+      fill = "Calibraiton: Iso"
+    )
+  ) +
+  theme_bw() +
+  geom_histogram(
+    alpha = 0.5
+  ) +
+  geom_histogram(
+    aes(
+      x = TauStack,
+      fill = "Stacking"
+    ),
+    alpha = 0.5
+  )  +
+  geom_histogram(
+    aes(
+      x = CalibrationBoostValue,
+      fill = "Calibraiton: Boost"
+    ),
+    alpha = 0.5
+  ) 
+
+table(Result$CalibrationIsoValue,
+      Result$CalibrationBoostValue)
+```
+

@@ -1,0 +1,10 @@
+---
+title: "Untitled"
+format: html
+---
+
+## Quarto
+
+- @bartovs2025fair
+
+- [Youtube](https://www.youtube.com/watch?v=3xNg51mv-fk)

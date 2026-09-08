@@ -1,0 +1,133 @@
+---
+title: "Untitled"
+format:
+  typst:
+    fig-format: retina
+    mainfont: "Hiragino Mincho ProN"
+    number-sections: true
+execute: 
+  message: false
+  warning: false
+---
+
+# SetUp
+
+- $\mu_{11}=K_{11}\times (1-e)^2$
+
+- $\mu_{01}=K_{11}\times e\times(1-e)$
+
+- $\mu_{10}=K_{11}\times e\times (1-e) + K_{10}\times (1-e)$
+
+- $\mu_{00}=K_{11}\times e^2 + K_{10}\times e + K_{00}$
+
+# Moment
+
+```{r}
+library(tidyverse)
+
+data <- read_csv("Data/test.csv") |> 
+  mutate(
+    A1 = if_else(Q1 == -50,1,0),
+    A2 = if_else(Q2 == 100,1,0)
+  )
+
+Mu_11 <- if_else(data$A1 == 1 & data$A2 == 1,1,0) |> mean()
+
+Mu_10 <- if_else(data$A1 == 1 & data$A2 == 0,1,0) |> mean()
+
+Mu_01 <- if_else(data$A1 == 0 & data$A2 == 1,1,0) |> mean()
+
+Mu_00 <- if_else(data$A1 == 0 & data$A2 == 0,1,0) |> mean()
+
+E <- Mu_01/(Mu_11 + Mu_01) 
+
+K_11 <- Mu_11/((1 - E)^2)
+
+K_01 <- (Mu_10 - K_11*(E)*(1 - E))/(1-E)
+
+K_00 <- 0
+```
+
+
+# Bayes
+
+```{r}
+library(tidyverse)
+
+data <- read_csv("Data/test.csv") |> 
+  mutate(
+    A1 = if_else(Q1 == -50,1,0),
+    A2 = if_else(Q2 == 100,1,0)
+  )
+
+
+
+parameter <- tibble(
+  E = seq(0,0.20,0.01),
+  K_11 = seq(0.80,1,0.01),
+  K_10 = seq(0,0.20,0.01)
+  ) |> 
+  expand(E,K_11,K_10)
+
+N_11 <- if_else(data$A1 == 1 & data$A2 == 1,1,0) |> sum()
+
+N_10 <- if_else(data$A1 == 1 & data$A2 == 0,1,0) |> sum()
+
+N_01 <- if_else(data$A1 == 0 & data$A2 == 1,1,0) |> sum()
+
+N_00 <- if_else(data$A1 == 0 & data$A2 == 0,1,0) |> sum()
+
+parameter$L <- rep(NA |> as.numeric(),nrow(parameter))
+
+for (i in 1:nrow(parameter)){
+  print(i)
+  parameter$L[i] <- 
+    ((parameter$K_11[i]*((1 - parameter$E[i])^2))^N_11)*
+    ((parameter$K_11[i]*(1 - parameter$E[i])*parameter$E[i])^N_01)*
+    ((parameter$K_11[i]*(1 - parameter$E[i])*parameter$E[i] + parameter$K_10[i]*(1 - parameter$E[i]))^N_10)
+}
+
+parameter[parameter$L == max(parameter$L),]
+```
+
+
+# ML
+
+```{r}
+library(tidyverse)
+
+data <- read_csv("Data/test.csv") |> 
+  mutate(
+    A1 = if_else(Q1 == -50,1,0),
+    A2 = if_else(Q2 == 100,1,0)
+  )
+
+parameter <- tibble(
+  E = seq(0.001,0.20,0.001),
+  K_11 = seq(0.80,0.999,0.001),
+  K_10 = seq(0.001,0.20,0.001)
+  ) |> 
+  expand(E,K_11,K_10)
+
+N_11 <- if_else(data$A1 == 1 & data$A2 == 1,1,0) |> sum()
+
+N_10 <- if_else(data$A1 == 1 & data$A2 == 0,1,0) |> sum()
+
+N_01 <- if_else(data$A1 == 0 & data$A2 == 1,1,0) |> sum()
+
+N_00 <- if_else(data$A1 == 0 & data$A2 == 0,1,0) |> sum()
+
+parameter$L <- rep(NA |> as.numeric(),nrow(parameter))
+
+for (i in 1:nrow(parameter)){
+  print(i)
+  parameter$L[i] <- 
+    (log(parameter$K_11[i]*((1 - parameter$E[i])^2))*N_11) + 
+    (log(parameter$K_11[i]*(1 - parameter$E[i])*parameter$E[i])*N_01) + 
+    (log(parameter$K_11[i]*(1 - parameter$E[i])*parameter$E[i] + parameter$K_10[i]*(1 - parameter$E[i]))*N_10)
+}
+
+parameter[parameter$L == max(parameter$L),]
+```
+
+

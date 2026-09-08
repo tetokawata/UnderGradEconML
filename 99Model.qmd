@@ -1,0 +1,371 @@
+---
+title: "Untitled"
+format: html
+---
+
+# Simple
+
+```{r}
+library(tidyverse)
+library(SuperLearner)
+
+data <- read_csv("Public/example.csv") |> 
+  mutate(
+    Price = Price |> 
+      log(),
+    CBD = if_else(
+      District %in% c(
+        "港区",
+        "中央区",
+        "千代田区"
+      ),
+      1,
+      0
+    )
+  ) |> 
+  filter(
+    year_2024 == 1,
+    Tenure >= 10
+  )
+
+group <- sample(
+  1:3,
+  data |> nrow(),
+  replace = TRUE
+)
+
+data$E_Y_D1 <- SuperLearner(
+  Y = data$Price[data$Reform == 1 & group == 1],
+  X = data[data$Reform == 1 & group == 1,] |> select(Tenure),
+  SL.library = list("SL.lm","SL.ranger")
+  ) |> 
+  predict(data |> select(Tenure)) |> 
+  magrittr::extract2("pred") |> 
+  as.numeric()
+
+data$E_Y_D0 <- SuperLearner(
+  Y = data$Price[data$Reform == 0 & group == 1],
+  X = data[data$Reform == 0 & group == 1,] |> select(Tenure),
+  SL.library = list("SL.lm","SL.ranger")
+  ) |> 
+  predict(data |> select(Tenure)) |> 
+  magrittr::extract2("pred") |> 
+  as.numeric()
+
+
+data$E_Y <- SuperLearner(
+  Y = data$Price[group == 1],
+  X = data[group == 1,] |> select(Tenure),
+  SL.library = list("SL.lm","SL.ranger")
+  ) |> 
+  predict(data |> select(Tenure)) |> 
+  magrittr::extract2("pred") |> 
+  as.numeric()
+
+data$E_D <- SuperLearner(
+  Y = data$Reform[group == 1],
+  X = data[group == 1,] |> select(Tenure),
+  SL.library = list("SL.lm","SL.ranger")
+  ) |> 
+  predict(data |> select(Tenure)) |> 
+  magrittr::extract2("pred") |> 
+  as.numeric()
+
+
+temp_fun <- isoreg(
+  data$E_Y[group == 2],
+  data$Price[group == 2]
+  ) |> 
+  as.stepfun()
+
+data$C_Y <- temp_fun(data$E_Y)
+
+temp_fun <- isoreg(
+  data$E_D[group == 2],
+  data$Reform[group == 2]
+  ) |> 
+  as.stepfun()
+
+data$C_D <- temp_fun(data$E_D)
+
+data |> 
+  ggplot(
+    aes(
+      x = E_D,
+      y = C_D
+    )
+  ) +
+  geom_line()
+
+data$B <- lm(
+  outcome ~ 0 + treat,
+  data |> 
+    mutate(
+      outcome = Price - C_Y,
+      treat = Reform - C_D
+    )
+  ) |> 
+  coef()
+
+data$Score <- data$E_Y_D1 - data$E_Y_D0 +
+  ((data$Reform*(data$Price - data$E_Y_D1))/data$E_D) -
+  (((1 - data$Reform)*(data$Price - data$E_Y_D0))/(1 - data$E_D))
+
+model_CRF <- grf::causal_forest(
+  Y = data$Price[group == 2],
+  W = data$Reform[group == 2],
+  X = data[group == 2,] |> model.matrix(~ 0 + Tenure,data=_),
+  Y.hat = data$C_Y[group == 2],
+  W.hat = data$C_D[group == 2]
+  )
+
+
+data$B_GRF <-  model_CRF |> 
+  predict(data |> model.matrix(~ 0 + Tenure,data=_)) |> 
+  magrittr::extract2("predictions")
+
+
+temp_fun <- isoreg(
+  data$B_GRF[group == 3],
+  data$Score[group == 3]
+) |> 
+  as.stepfun()
+
+data$B_C_GRF <- temp_fun(data$B_GRF)
+
+data |> 
+  ggplot(
+    aes(
+      x = Tenure,
+      y = B_C_GRF
+    )
+  ) +
+  geom_line()
+
+data |> 
+  mutate(
+    Y_D1 = E_Y_D1,
+    Y_D0 = E_Y_D0,
+    Method = "T"
+  ) |> 
+  bind_rows(
+    data |> 
+  mutate(
+    Y_D1 = C_Y + B*(1 - C_D),
+    Y_D0 = C_Y + B*(0 - C_D),
+    Method = "R"
+  )
+  ) |> 
+  bind_rows(
+    data |> 
+  mutate(
+    Y_D1 = C_Y + B_C_GRF*(1 - C_D),
+    Y_D0 = C_Y + B_C_GRF*(0 - C_D),
+    Method = "R_GRF"
+  )
+  ) |> 
+  ggplot(
+    aes(
+      x = Tenure,
+      y = Y_D1
+    )
+  ) +
+  geom_line(
+    aes(
+      linetype = "D1"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = Y_D0,
+      linetype = "D0"
+    )
+  ) +
+  facet_wrap(~ Method)
+
+data |> 
+  mutate(
+    Y_D1 = E_Y_D1,
+    Y_D0 = E_Y_D0,
+    Method = "T"
+  ) |> 
+  bind_rows(
+    data |> 
+  mutate(
+    Y_D1 = C_Y + B*(1 - C_D),
+    Y_D0 = C_Y + B*(0 - C_D),
+    Method = "R"
+  )
+  ) |> 
+  bind_rows(
+    data |> 
+  mutate(
+    Y_D1 = C_Y + B_C_GRF*(1 - C_D),
+    Y_D0 = C_Y + B_C_GRF*(0 - C_D),
+    Method = "R_GRF"
+  )
+  ) |> 
+  ggplot(
+    aes(
+      x = Tenure,
+      y = Y_D1 - Y_D0,
+      linetype = Method
+    )
+  ) +
+  geom_line() +
+  ggside::geom_xsidedensity(
+    aes(
+      fill = Reform |> factor()
+    ),
+    alpha = 0.5
+  )
+```
+
+
+# Data
+
+```{r}
+library(tidyverse)
+
+data <- read_csv("Public/example.csv") |> 
+  mutate(
+    Price = Price |> 
+      log(),
+    CBD = if_else(
+      District %in% c(
+        "港区",
+        "中央区",
+        "千代田区"
+      ),
+      1,
+      0
+    )
+  ) |> 
+  filter(
+    year_2024 == 1,
+    Tenure >= 10
+  )
+
+S_Y <- ddml::shortstacking(
+  y = data$Price,
+  X = data |> 
+    select(Tenure, CBD) |> 
+    data.matrix(),
+  learners = list(
+    list(fun = ddml::ols),
+    list(fun = ddml::mdl_ranger)
+  ),
+  sample_folds = 10,
+  ensemble_type = "nnls1"
+  )
+
+S_D <- ddml::shortstacking(
+  y = data$Reform,
+  X = data |> 
+    select(Tenure, CBD) |> 
+    data.matrix(),
+  learners = list(
+    list(fun = ddml::ols),
+    list(fun = ddml::mdl_glm,
+         args = list(family = "binomial"))
+  ),
+  sample_folds = 10,
+  ensemble_type = "nnls1"
+  )
+
+
+data$E_Y_D1 <- lm(Price ~ poly(Tenure,4) + CBD + Tenure:CBD, data, subset = Reform == 1) |> 
+  predict(data)
+
+data$E_Y_D0 <- lm(Price ~ poly(Tenure,4) + CBD + Tenure:CBD, data, subset = Reform == 0) |> 
+  predict(data)
+
+data$E_Y <- S_Y$oos_fitted[,1]
+data$E_D <- S_D$oos_fitted[,1]
+
+
+
+data$B <- lm(psu_Y ~ 0 + psu_D, data |> 
+     mutate(
+       psu_Y = Price - E_Y,
+       psu_D = Reform - E_D
+     )
+     ) |> 
+  coef()
+
+data$B_BLP <- lm(psu_Y ~ poly(Tenure,2) + CBD + CBD:Tenure, 
+   data |> mutate(
+     psu_Y = (Price - E_Y)/(Reform - E_D),
+     psu_weight = (Reform - E_D)^2
+     ),
+   weights = psu_weight
+   ) |> 
+  predict(
+    data |> mutate(
+     psu_Y = (Price - E_Y)/(Reform - E_D),
+     psu_weight = (Reform - E_D)^2
+     )
+  )
+
+data$B_CF <- grf::causal_forest(
+  Y = data$Price,
+  W = data$Reform,
+  X = data |> model.matrix(~ 0 + Tenure + CBD, data = _),
+  Y.hat = S_Y$oos_fitted[,1],
+  W.hat = S_D$oos_fitted[,1]
+  ) |> 
+  predict(
+     data |> model.matrix(~ 0 + Tenure + CBD, data = _)
+  ) |> 
+  magrittr::extract2("predictions")
+
+data |> 
+  mutate(
+    C_Y_D1 = E_Y_D1,
+    C_Y_D0 = E_Y_D0,
+    method = "T"
+  ) |> 
+  bind_rows(
+    data |> 
+  mutate(
+    C_Y_D1 = E_Y + B*(1 - E_D),
+    C_Y_D0 = E_Y + B*(0 - E_D),,
+    method = "R"
+  )
+  ) |> 
+  bind_rows(
+    data |> 
+  mutate(
+    C_Y_D1 = E_Y + B_BLP*(1 - E_D),
+    C_Y_D0 = E_Y + B_BLP*(0 - E_D),,
+    method = "R_BLP"
+  )
+  ) |> 
+  bind_rows(
+    data |> 
+  mutate(
+    C_Y_D1 = E_Y + B_CF*(1 - E_D),
+    C_Y_D0 = E_Y + B_CF*(0 - E_D),,
+    method = "R_CF"
+  )
+  ) |> 
+  ggplot(
+    aes(
+      x = Tenure,
+      y = C_Y_D1
+    )
+  ) +
+  geom_line(
+    aes(
+      color = "D1"
+    )
+  )+
+  geom_line(
+    aes(
+      y = C_Y_D0,
+      color = "D0"
+    )
+  ) +
+  facet_grid(CBD~ method)
+```
+

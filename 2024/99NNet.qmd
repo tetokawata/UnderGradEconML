@@ -1,0 +1,43 @@
+---
+title: "予測問題発展: モデル集計"
+subtitle: "機械学習入門"
+author:
+  - name: 川田恵介
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  typst:
+    fig-format: retina
+    section-numbering: 1.1.1.
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: true
+---
+
+```{r, dev='ragg_png'}
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv")
+```
+
+# RoadMap
+
+1. 予測手法: 他の教師付き学習の手法の紹介
+
+2. バランス後の比較: 予測モデルの直接的活用
+
+3. バランス後の比較: 異質性の推定
+
+## 復習
+
+```{r}
+library(neuralnet)
+
+neuralnet(Price ~ Size + Tenure + Distance, Data) |> 
+  plot(rep = "best")
+```
+

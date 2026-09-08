@@ -1,0 +1,68 @@
+---
+title: "99DataInsuranceExample"
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+---
+
+## Quarto
+
+```{dot}
+digraph {
+    rankdir=TB;
+    newrank=true;
+    node[shape = none, fontsize="8pt"];
+    edge[arrowsize = 0.1, fontsize = "8pt"];
+    
+    S [label = "今日"];
+    I [label = "保険加入"];
+    T [label = "被災"];
+    C [label = "日常"];
+    C_L [label = "家計"];
+    T_L [label = "家計"];
+    
+    S -> T
+    S -> C
+    C -> C_L
+    T -> T_L
+    I -> C_L
+    I -> T_L
+    {rank=same; T; C}
+    {rank=same;C_L;T_L;I}
+}
+```
+
+## Quarto
+
+```{dot}
+digraph {
+    rankdir=TB;
+    newrank=true;
+    node[shape = none, fontsize="8pt"];
+    edge[arrowsize = 0.1, fontsize = "8pt"];
+    
+    S [label = "研究開始"];
+    I [label = "推定方法"];
+    T [label = "データ1"];
+    C [label = "データ2"];
+    C_L [label = "推定結果"];
+    T_L [label = "推定結果"];
+    
+    S -> T
+    S -> C
+    C -> C_L
+    T -> T_L
+    I -> C_L
+    I -> T_L
+    {rank=same; T; C}
+    {rank=same;C_L;T_L;I}
+}
+```

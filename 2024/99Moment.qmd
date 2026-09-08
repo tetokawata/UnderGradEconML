@@ -1,0 +1,498 @@
+---
+title: "モーメント法"
+subtitle: "機械学習"
+author: "川田恵介 (keisukekawata@iss.u-tokyo.ac.jp)"
+bibliography: "ref.bib"
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+execute:
+  echo: false
+  eval: true
+  warning: false
+  message: false
+---
+
+# シンプルなモデルの推定
+
+```{r}
+library(tidyverse)
+```
+
+
+- 事例数に比べて、$\beta$の数が少ないモデルであれば、OLSや平均値は有力な推定方法
+
+- OLSや平均値などを含む推定方法
+
+## それぞれの特徴
+
+- 機械学習は、ある程度の事例数はあるが、$X$の組み合わせがそれ以上多い場合に有効
+
+    - 平均値と近い値が推定できるように設計されているが、具体てkにどの程度近いのかは不透明
+
+- 平均値やOLSは、"十分な事例数のもとで、平均値を知りたいのであれば"、が有力
+
+    - 推定値の分布が明確であり、推定誤差(信頼区間)を計算できるため
+    
+## 実例
+
+- 信頼区間: 横線は、95$\%$の確率で母平均を含む
+
+```{r, dev='ragg_png'}
+read_csv("Public/Example.csv") |> 
+  estimatr::lm_robust(
+    Price ~ 0 + District,
+    data = _,
+    subset = TradeY == 2023
+  ) |> 
+  generics::tidy() |> 
+  ggplot(
+    aes(
+      x = estimate,
+      xmin = conf.low,
+      xmax = conf.high,
+      y = term |> str_sub(9)
+    )
+  ) +
+  theme_bw() +
+  geom_pointrange(
+    position = position_dodge(width = 0.5)
+  ) +
+  ylab("23区")
+```
+
+## 分布
+
+- 一般的な定義: 値のばらつき方
+
+- 種類の分布を区別することが重要
+
+    - 個別事例値のばらつき (事例の分布)
+    
+    - 平均値などの、事例の分布を特徴づける値のばらつき
+
+## 事例のばらつき例
+
+- 自身のデータにおける $Y$ のばらつき
+
+- 仮想的な母集団における $Y$ のばらつき
+
+    - 上記は一般に一致しない
+
+    - 事例から計算される値(平均値など)も一致しない
+
+## イメージ図
+
+```{dot}
+digraph {
+    rankdir=TB;
+    newrank=true;
+    node[shape = none];
+    edge[arrowsize = 0.1];
+    
+    S [label = "母分布: 中心６区=5割"];
+    D [label = "自身のデータ: 6割"];
+    D1[label = "データA: 5.5割"];
+    D2[label = "データB: 4.5割"];
+    D3[label = "データC: 4割"];
+    Est[label = "平均値の分布"]
+
+    S -> D,D1,D2,D3
+    D,D1,D2,D3 -> Est[style = "dashed", dir = "back"]
+}
+```
+
+## イメージ図
+
+- 赤色: 実際にわかる/灰色: 実際にはわからない
+
+```{dot}
+digraph {
+    rankdir=TB;
+    newrank=true;
+    node[shape = none];
+    edge[arrowsize = 0.1];
+    
+    S [label = "母分布: 中心６区=5割", fontcolor = "grey"];
+    D [label = "自身のデータの分布: 6割", fontcolor = "red"];
+    D1[label = "データAの分布: 5.5割", fontcolor = "grey"];
+    D2[label = "データBの分布: 4.5割", fontcolor = "grey"];
+    Est[label = "平均値の分布", fontcolor="grey"]
+
+    S -> D,D1,D2
+    D,D1,D2 -> Est[style = "dashed", dir = "back"]
+}
+```
+
+## データ分析の限界
+
+- 母平均と推定値は一致しない
+
+    - 推定値 $=$ 母平均 と主張すると、"$100\%$"を嘘を主張してしまう
+
+## $Y$の平均値の利点
+
+- $Y$の平均値の分布が、理論的に類推できる!!!
+
+- 事例数が十分あり、ランダムサンプルングであれば、
+
+    - 平均値の分布は正規分布(ベル型分布)で近似でき、具体的に推定できる
+    
+        - 中心極限定理と呼ばれる
+
+    - 数値実験より、200事例以上を要求
+
+- 平均値を保管する指標、信頼区間を計算できる
+
+## 数値例
+
+- $Y$ の平均値を推定する
+
+    - 母平均は0.5
+    
+    - 事例数は500
+    
+    - 1000名の研究者が独自にデータを収集し、計算する
+
+## 数値例: 平均値
+
+```{r, dev='ragg_png'}
+
+Result = map_dfr(
+  1:1000,
+  function(i){
+    set.seed(i)
+    y = sample(c(0,1),500,replace = TRUE)
+    temp = lm(y ~ 1) |> 
+      summary()
+    temp = temp$coefficients |> 
+      as_tibble() |> 
+      mutate(`研究者名` = i)
+    return(temp)
+  }
+  )
+
+Result |> 
+  ggplot(
+    aes(
+      y = `研究者名`,
+      x = Estimate
+    )
+  ) +
+  theme_bw() +
+  geom_vline(xintercept = 0.5) +
+  geom_point() +
+  ggside::geom_xsidehistogram() +
+  ylim(1,50) +
+  xlim(0,1)
+```
+
+## 信頼区間
+
+- データから計算される区間
+
+    - 一定割合 (初期値では$95\%$) のデータについて、母平均を含む区間
+    
+    - 「データ上の平均値は正規分布に従う」、という性質から計算できる
+
+## 数値例: 信頼区間
+
+```{r, dev='ragg_png'}
+Result |> 
+  ggplot(
+    aes(
+      y = `研究者名`,
+      x = Estimate,
+      xmin = Estimate - 1.96*`Std. Error`,
+      xmax = Estimate + 1.96*`Std. Error`
+    )
+  ) +
+  theme_bw() +
+  geom_vline(xintercept = 0.5) +
+  geom_pointrange() +
+  ggside::geom_xsidehistogram() +
+  ylim(1,50) +
+  xlim(0,1)
+```
+
+## 数値例: 現実
+
+```{r, dev='ragg_png'}
+Result |> 
+  mutate(
+    Own = if_else(
+       `研究者名` == 4,
+       "自身",
+       "仮想"
+    )
+  ) |> 
+  ggplot(
+    aes(
+      y = `研究者名`,
+      x = Estimate,
+      xmin = Estimate - 1.96*`Std. Error`,
+      xmax = Estimate + 1.96*`Std. Error`
+      )
+  ) +
+  theme_bw() +
+  geom_vline(xintercept = 0.5) +
+  geom_pointrange(
+    aes(color = Own)
+  ) +
+  ggside::geom_xsidehistogram() +
+  ylim(1,50) +
+  scale_color_manual(values = c("grey","red")) +
+  xlim(0.45,0.55) +
+  xlim(0,1)
+```
+
+## 数値例: 現実
+
+```{r, dev='ragg_png'}
+Result |> 
+  mutate(
+    Own = if_else(
+       `研究者名` == 1,
+       "自身",
+       "仮想"
+    )
+  ) |> 
+  ggplot(
+    aes(
+      y = `研究者名`,
+      x = Estimate,
+      xmin = Estimate - 1.96*`Std. Error`,
+      xmax = Estimate + 1.96*`Std. Error`
+      )
+  ) +
+  theme_bw() +
+  geom_vline(xintercept = 0.5) +
+  geom_pointrange(
+    aes(color = Own)
+  ) +
+  ggside::geom_xsidehistogram() +
+  ylim(1,50) +
+  scale_color_manual(values = c("grey","red")) +
+  xlim(0.45,0.55) +
+  xlim(0,1)
+```
+
+
+## 数値例: "不幸な"現実
+
+```{r, dev='ragg_png'}
+Result |> 
+  mutate(
+    Own = if_else(
+       `研究者名` == 9,
+       "自身",
+       "仮想"
+    )
+  ) |> 
+  ggplot(
+    aes(
+      y = `研究者名`,
+      x = Estimate,
+      xmin = Estimate - 1.96*`Std. Error`,
+      xmax = Estimate + 1.96*`Std. Error`
+      )
+  ) +
+  theme_bw() +
+  geom_vline(xintercept = 0.5) +
+  geom_pointrange(
+    aes(color = Own)
+  ) +
+  ggside::geom_xsidehistogram() +
+  ylim(1,50) +
+  scale_color_manual(values = c("grey","red")) +
+  xlim(0.45,0.55) +
+  xlim(0,1)
+```
+
+## 確率的意思決定
+
+- 一定確率で必ず"間違いを犯す"ことを許容する必要がある
+
+    - 保険への加入、薬の服用等々
+
+- "分析結果"も同様
+
+    - 信頼区間を結果として報告する場合、一定確率で母平均を含む区間を報告してしまう
+    
+    - 初期設定では5$\%$
+    
+        - じゃんけんで３回負ける確率と同程度
+
+## 性質: 信用確率
+
+- 信用確率 (100 - ミスを犯す確率) $\%$
+
+    - 「ある主張は信用確率が高いので採用する」
+
+    - 仮想的な研究者の中で、母平均を含まない値を得る人の割合
+    
+        - 類似概念: 火災に遭う人の割合
+
+- 信用確率を上げるためには、信頼区間を広げる必要がある
+
+    - $100\%$ 間違わない信頼区間を得るためには、無限大に大きな区間が必要
+    
+        - 分析結果を曖昧にしすぎており、"意味がない"
+
+## 数値例: 現実
+
+- 信用確率を$99.5\%$ に変更 (じゃんけんで5回負ける確率と同程度)
+
+```{r, dev='ragg_png'}
+Q = qnorm(1 - (0.005/2))
+Result |> 
+  mutate(
+    Own = if_else(
+       `研究者名` == 9,
+       "自身",
+       "仮想"
+    )
+  ) |> 
+  ggplot(
+    aes(
+      y = `研究者名`,
+      x = Estimate,
+      xmin = Estimate - Q*`Std. Error`,
+      xmax = Estimate + Q*`Std. Error`
+      )
+  ) +
+  theme_bw() +
+  geom_vline(xintercept = 0.5) +
+  geom_pointrange(
+    aes(color = Own)
+  ) +
+  ggside::geom_xsidehistogram() +
+  ylim(1,50) +
+  scale_color_manual(values = c("grey","red")) +
+  xlim(0.45,0.55) +
+  xlim(0,1)
+```
+
+## 性質: 事例数
+
+- 平均値を計算するために用いた事例数の減少は、
+
+    - 信頼区間を広げ、結論を曖昧にする
+    
+- 大幅な減少(100事例を割るなど)は
+
+    - 信頼区間の計算が不可能になる
+    
+        - 代替案: 最尤法/ベイズ法による推定
+        
+            - 問題点: より非現実的な仮定が必要なケースが多い
+
+## 数値例:小規模事例
+
+```{r, dev='ragg_png'}
+Result = map_dfr(
+  1:1000,
+  function(i){
+    set.seed(i)
+    y = sample(c(0,1),200,replace = TRUE)
+    temp = lm(y ~ 1) |> 
+      summary()
+    temp = temp$coefficients |> 
+      as_tibble() |> 
+      mutate(`研究者名` = i)
+    return(temp)
+  }
+  )
+
+
+Result |> 
+  mutate(
+    Own = if_else(
+       `研究者名` == 28,
+       "自身",
+       "仮想"
+    )
+  ) |> 
+  ggplot(
+    aes(
+      y = `研究者名`,
+      x = Estimate,
+      xmin = Estimate - 1.96*`Std. Error`,
+      xmax = Estimate + 1.96*`Std. Error`
+      )
+  ) +
+  theme_bw() +
+  geom_vline(xintercept = 0.5) +
+  geom_pointrange(
+    aes(color = Own)
+  ) +
+  ggside::geom_xsidehistogram() +
+  ylim(1,50) +
+  scale_color_manual(values = c("grey","red")) +
+  xlim(0,1)
+```
+
+## 数値例:小規模事例
+
+```{r, dev='ragg_png'}
+Result = map_dfr(
+  1:1000,
+  function(i){
+    set.seed(i)
+    y = sample(c(0,1),5,replace = TRUE)
+    temp = lm(y ~ 1) |> 
+      summary()
+    temp = temp$coefficients |> 
+      as_tibble() |> 
+      mutate(`研究者名` = i)
+    return(temp)
+  }
+  )
+
+
+
+Result |> 
+  mutate(
+    Own = if_else(
+       `研究者名` == 28,
+       "自身",
+       "仮想"
+    )
+  ) |> 
+  ggplot(
+    aes(
+      y = `研究者名`,
+      x = Estimate,
+      xmin = Estimate - 1.96*`Std. Error`,
+      xmax = Estimate + 1.96*`Std. Error`
+      )
+  ) +
+  theme_bw() +
+  geom_vline(xintercept = 0.5) +
+  geom_pointrange(
+    aes(color = Own)
+  ) +
+  ggside::geom_xsidehistogram() +
+  ylim(1,50) +
+  scale_color_manual(values = c("grey","red")) +
+  xlim(0,1)
+```
+
+## まとめ
+
+- OLSや平均値は、$\beta$ の数が事例数に比べて十分に少なければ、母平均を推論する優れた方法
+
+    - 信頼区間を計算できる
+    
+        - 平均値を用いる場合は、ざっくり200事例以上
+        
+- LASSOなどの機械学習は、複雑な性質を持っており、信頼区間の計算方法が確立されていない
+z

@@ -1,0 +1,322 @@
+---
+title: "比較研究: 発展"
+subtitle: "機械学習"
+author: 
+  - name: "川田恵介"
+    email: keisukekawata@iss.u-tokyo.ac.jp
+    url: https://github.com/tetokawata/TargetML
+    affiliation: 
+      - name: 東京大学
+date: now
+format:
+  typst:
+    fig-format: retina
+    mainfont: "Hiragino Mincho ProN"
+    number-sections: true
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+    embed-resources: true
+execute: 
+  warning: false
+  message: false
+  eval: true
+  echo: false
+bibliography: "ref.bib"
+bibliographystyle: harvard-cite-them-right
+---
+
+# 恒常所得仮説の例
+
+## 推奨される予測モデルの活用
+
+::: {#imp-comparison_research_target .callout-important}
+### 予測モデルを活用した比較
+1. データの事例について、$Y/D$ の予測値を算出する
+
+2. $Y/D$ の予測誤差: ($Y -Y$ の予測値)$/$($D -D$ の予測値)を計算する
+
+3. $Y$ の予測誤差を、$D$の予測誤差でOLS推定する
+:::
+
+- 具体的な例を用いて、直感を確認
+
+## 消費の決定
+
+- 教科書的なケインズ型消費関数 $$消費=\beta_0 + \beta_1\times 所得$$
+
+  - 所得は、消費と貯蓄 (含む借金の返済) に振り分ける
+  
+- 乗数効果: 所得の増加は、消費を増やし、他の人の所得を増やす
+
+  - 給付金や減税等による"景気刺激政策"の論拠の一つ
+  
+## 現代的議論
+
+- 所得変化の理由が論点
+
+  - 「今、川田が一万円を皆さんに配った場合、今月の消費は増える?、それとも貯蓄に回る?」
+  
+- 恒常所得仮説: 生涯所得に大きな影響を与えない「一時的な所得」は、消費をほとんど増やさない
+
+## 現代的議論
+
+- 恒常所得仮説への反論: 「一時的な所得」であったとしても、消費を大きく増加させる可能性がある
+
+  - 金融市場の不完全性、人間の思考の癖
+
+- 個人差があるので、傾向把握は実証的な課題
+
+## 想定
+
+- データから観察できる変数: ある月の$[$ 消費額、所得額、個人属性 (職業、過去の賃金履歴、学歴、技能等) $]$
+
+- 所得の"構造": 所得の内訳 $$所得=\underbrace{一時所得 + 恒常所得}_{観察できない}$$
+
+## 想定
+
+- 平均消費の"構造": 所得の内訳 $$E[消費\mid 一時、恒常所得]=10+\underbrace{0.5\times 恒常所得}_{観察できない}$$ 
+
+  - 恒常所得仮説が厳密に成り立っている
+  
+  - 恒常所得が同じ回答者内で比較すると、消費と一時所得の間に関係性はない
+
+## 悪例
+
+- 「一時所得 $\simeq$ 所得」と考えて、消費 $\sim$ 所得 をOLSで推定
+
+  - 「消費と一時所得の間に正の関係性がある」というミスリーディングな結論を得てしまう
+
+
+## 自然実験の活用
+
+- 一時所得**のみ**を変動させるイベント (自然実験) があれば、消費 $\sim$ イベント ($\simeq$ 一時所得) をOLSで推定できる
+
+  - 例: 宝くじ購入内で、当たったと人と当たらなかった人の消費パターンを比べる
+  
+    - 米国における政府機関の一時閉鎖を利用し、閉鎖により一時的に所得が下がった人とそれ以外を比較 [@baker2017income]
+
+## 個人属性を活用したバランス後の比較
+
+- $恒常所得=X$ から予測可能な所得と仮定
+
+- $X$ が全く同じ人の中で、バランス後の比較
+
+  - $X$ が同じであれば、所得の個人差 $=$ 一時所得の個人差なので、 $消費\sim 所得$ の関係性は、一時所得と消費の関係性を捉えている
+
+## 予測モデルの活用
+
+- $所得\simeq 一時所得 + 予測所得$
+
+  - $$一時所得\simeq  \underbrace{所得 - 予測所得}_{所得の予測誤差}$$
+  
+- $消費量 - Xからの予測消費量$ も同時に行うことで、$X$ の影響を念入りに排除
+
+# 予測モデルへの要求
+
+## 予測精度
+
+- $Y/D$ について、理想的な予測モデルに近いモデルを推定する必要がある。
+
+- OLSやLASSO、Random Forestなどの特定の推定方法だけでは、不十分な可能性があるので、Stacking法が推奨される
+
+## 過剰適合の回避
+
+- 予測モデルを比較的シンプルなOLSやLASSOなどで推定した場合、全データを用いて予測モデルを推定できる
+
+- Random Forestなどで推定する場合は、交差推定が必要
+
+- 交差推定を利用したStackingを用いる場合、アルゴリズムの数が少数であれば、全データを用いて推定できる
+
+# 差の異質性
+
+## @fukai2021describing
+
+- コロナ前(2019年)と後(2020年)の4~6月の就業率を比較したい
+
+    - COVIDとその対応策の影響を間接的に評価する
+
+- $Y=$ 就業状態、$D=$ 2020/2019、$X=$ 年齢等の基礎変数 $+$ 前年の就業状態
+
+- 平均的な差はあまりない
+
+    - 就業状態が流動的であると考えられる、一部の層に大きな影響がある
+
+## 個人因果効果の予測
+
+- 個人ごとに因果効果が予測できれば、
+
+    - 医療行為の個別化: "きき方"/副反応の深刻さ、に応じて医療行為を変える
+    
+        - ある医療の行為の因果効果を、$X$から予測する
+    
+    - 単位取得計画のサジェスト: 学生の志望進路や興味関心などに応じて、おすすめ単位取得を示す
+    
+        - 講義の受講の因果効果を、$X$から予測する
+
+- 実務の例: [EconML (MicroSoft)](https://econml.azurewebsites.net/), [CausalML (Uber)](https://causalml.readthedocs.io/en/latest/about.html)
+
+## 職業訓練の効果
+
+- フランスにおける実験: 職業訓練の提供主体を公的機関/民間企業にランダムに割り付ける
+
+- @behaghel2014private : 平均的には公的機関の方が効果的
+
+    - @kallus2023treatment : 異質性が大きい
+
+    - 一部の労働者によって公的機関による訓練の影響が強いだけで、平均的には民間企業の訓練の方が効果的
+
+
+# 異質性の推定
+
+## 部分線型モデルの一般化
+
+- 部分線型モデルを一般化する $$E[Y\mid D,X]=\underbrace{\beta_D(X)}_{Xについての非常に複雑な関数}\times D$$ $$+ Xについての複雑な関数$$
+
+- ここまでは $\beta_D(X)$ は一定の値
+
+## 推定
+
+- $\beta_D(X)$ を以下の手順で推定
+
+1. $Y,D$ の予測モデル $g_Y(X),g_D(X)$ を交差推定で推定
+
+2. $\beta_D(X)\times (D - E[D\mid X])$ から、$Y-E[Y\mid X]$ を極力予測するように $\beta_D(X)$ を推定
+
+## 「差」の線型モデル
+
+- $\beta_D(X)=\beta_0 + \beta_1X_1+..$ と定式化する
+
+- どのような属性が、大きな"平均差"をもたらすのか、推定できる
+
+## 補論: 標準化
+
+- 線型モデルにおいて、通常 $\beta_0$ の解釈は難しい
+
+  - 全ての$X$ が"0"であった場合の"値"
+  
+- $X$ を 標準化 $(X-Xの平均値)/Xの標準偏差$ すれば、
+
+  - 全ての$X$ が平均値であった場合の"値"となり、より解釈しやすい
+
+## 例
+
+```{r}
+#| echo: true
+set.seed(111)
+
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv")
+
+Y <- Data$Price
+
+D <- Data$Reform
+
+X <- select(
+  Data,
+  Size,
+  Tenure,
+  Distance)
+  
+```
+
+## 例: 予測モデル
+
+```{r}
+#| echo: true
+model <- grf::causal_forest(
+  X = scale(X),
+  Y = Y,
+  W = D
+) # Causal Forest
+```
+
+## 例: 「差」の線型モデル
+
+```{r}
+#| echo: true
+model_linear <- grf::best_linear_projection(
+  model,
+  scale(X))
+
+confint(model_linear)
+```
+
+## 「差」の回帰木モデル
+
+- $\beta_D(X)$ を回帰木モデルとして推定する
+
+  - Random Forestが応用できる
+  
+    - Causal Forest 
+
+## 例: 「差」の線型モデル
+
+```{r}
+X$pred <- model$predictions
+
+head(X)
+```
+
+## Stackingの活用
+
+- grf packageのみでは、random forestを用いた$Y/D$ の予測モデル推定が行われる
+
+- Stackingに変更することも可能
+
+## 例: Stackingの活用
+
+```{r}
+#| echo: true
+library(ddml)
+
+X <- select(
+  Data,
+  Size,
+  Tenure,
+  Distance)
+
+model_Y <- shortstacking(
+  y = Y,
+  X = scale(X),
+  learners = list(
+    list(fun = ddml::ols),
+    list(fun = ddml::mdl_ranger)),
+  ensemble_type = "nnls1")
+
+model_D <- shortstacking(
+  y = D,
+  X = scale(X),
+  learners = list(
+    list(fun = ddml::ols),
+    list(fun = ddml::mdl_ranger)),
+  ensemble_type = "nnls1")
+```
+
+## 例: Stackingの活用
+
+```{r}
+#| echo: true
+#| 
+model <- grf::causal_forest(
+  X = scale(X),
+  Y = Y,
+  W = D,
+  Y.hat = model_Y$oos_fitted,
+  W.hat = model_D$oos_fitted) # Causal Forest
+
+confint(grf::best_linear_projection(model,scale(X)))
+```
+
+## 発展
+
+- 異質性の推定については、多くの手法が提案され、現在でも研究が続いている
+
+    - 参照: [CausalML](https://causalml-book.org/) : Chap. 14-15
+
+## Reference
+
+
+

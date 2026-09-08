@@ -1,0 +1,422 @@
+---
+title: "バランス後の比較"
+format:
+  typst:
+    fig-format: retina
+    mainfont: "Hiragino Mincho ProN"
+    number-sections: true
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+    embed-resources: true
+    dev: ragg_png
+bibliography: "ref.bib"
+bibliographystyle: harvard-cite-them-right
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: true
+---
+
+# 分析例
+
+## 23区間不動産価格格差
+
+```{r,dev='ragg_png'}
+library(tidyverse)
+
+data <- read_csv("Public/example.csv") |> 
+  filter(
+    District %in% c("港区","練馬区"),
+    year_2024 == 1
+  ) |> 
+  select(
+    District,
+    Price,
+    Size,
+    Tenure,
+    Distance,
+    RoomNumber
+  )
+
+q <- qnorm(1 - (0.05/(2*22)))
+
+read_csv("Public/example.csv") |> 
+  filter(year_2024 == 1) |> 
+  mutate(
+    District = fct_relevel(District,"練馬区")
+  ) |> 
+  estimatr::lm_robust(
+    Price ~ District,
+    data = _
+    ) |> 
+  generics::tidy() |> 
+  filter(
+    term != "(Intercept)"
+  ) |> 
+  mutate(
+    term = term |> 
+      str_sub(9,-2)
+  ) |> 
+  ggplot(
+    aes(
+      y = reorder(term,estimate),
+      x = estimate,
+      xmin = conf.low,
+      xmax = conf.high
+    )
+  ) +
+  geom_pointrange(
+    aes(
+      xmin = estimate - q*std.error,
+      xmax = estimate + q*std.error,
+      color = "補正ずみ"
+    )
+  ) +
+  geom_pointrange(
+    aes(
+      color = "補正なし"
+    ),
+    linewidth = 1.5
+  ) +
+  theme_bw() +
+  ylab("") +
+  geom_vline(
+    xintercept = 0,
+    color = "grey"
+  )
+```
+
+## 指導教員からの"コメント"
+
+- 「区の魅力"ではなく、取引される物件の性質の違いを反映しているだけではないか?」
+
+## バランス表
+
+```{r}
+#| echo: true
+
+gtsummary::tbl_summary(
+  data,
+  by = District
+)
+```
+
+- 「中央値(50%) (下位25%, 上位25%)」を表示
+
+## 可能性
+
+- 練馬区の方が、駅から遠く、築年数が古く、狭めの部屋が取引される傾向
+
+  - 地区に関わらず、取引価格が低い傾向
+  
+- 同じような物件で比べれば、港区との格差は縮まるのではないか
+
+## Rの例: 単純比較
+
+```{r}
+#| echo: true
+estimatr::lm_robust(
+  Price ~ District, 
+  data)
+```
+
+## Rの例: Size, Tenure, Distanceをバランス
+
+- OLSを用いたバランスが可能
+
+```{r}
+#| echo: true
+estimatr::lm_robust(
+  Price ~ District + Size + Tenure + Distance,
+  data)
+```
+
+- Size, Tenure, Distanceを"バランス"すると、練馬/港区間格差が2118万円縮まる
+
+## What if 分析
+
+- 広義にはWhat if 分析 (もし〜ならば、どうなるか?) の一部
+
+    - **もし**部屋の広さや築年数、駅からの距離の分布に差がなければ、練馬/港区の価格格差はどうなるか？
+
+## 実際の例
+
+- [合計特殊出生率](https://ja.wikipedia.org/wiki/%E5%90%88%E8%A8%88%E7%89%B9%E6%AE%8A%E5%87%BA%E7%94%9F%E7%8E%87#:~:text=%E5%90%88%E8%A8%88%E7%89%B9%E6%AE%8A%E5%87%BA%E7%94%9F%E7%8E%87%EF%BC%88%E3%81%94%E3%81%86%E3%81%91%E3%81%84,%E4%BA%BA%E5%8F%A3%E3%81%8C%E8%87%AA%E7%84%B6%E6%B8%9B%E3%81%99%E3%82%8B%E3%80%82)
+
+    - 出生率の国比較や時系列比較に理由される
+    
+        - 年齢構造も異なる
+        
+- 合計特殊出生率 = 年齢のバランス $$=\frac{15歳の女性が一年間で生んだ子供の数}{15歳の女性人口} +$$ $$.. +\frac{49歳の女性が一年間で生んだ子供の数}{49歳の女性人口}$$
+
+## Takeaway
+
+- 実務で伝統的に用いられてきた方法は、$X$ の数が多い場合には適用不可能
+
+- 重回帰を用いた方法は、ある程度対応可能だが、 $X$ の数が非常に多くなると対応不可能
+
+  - LASSOは候補になるが、信頼区間の計算困難であり、非実用的
+  
+- 次のスライドで、Post-double LASSOを紹介
+
+# サブグループ法
+
+## 推定対象
+
+- $Y=$ Priceの平均値の $D=$ 地区間での差
+
+  - ただし、$X=$ 物件の属性の差を無視できるように調整(バランス)
+
+- 実務で最も用いられてきた方法は、サブグループ分析
+
+## 特定グループの比較
+
+- 最も単純な方法は、$X$ 同じサブグループ内での比較
+
+- 例: $X=$ RoomNumberのみがバランスの対象
+
+```{r}
+#| echo: true
+estimatr::lm_robust(
+  Price ~ District, 
+  data,
+  subset = RoomNumber == 3) # 部屋数3
+```
+
+## 実務での例
+
+- 企業によるデータ分析で、頻繁に用いられる
+
+- 既存店における前年同月
+
+  - [イオン・グループ](https://news.shoninsha.co.jp/catmonthly/288778)
+
+## サブグループ分析
+
+- $X$ の組み合わせごとに、事例をサブグループに分割し、平均取引価格を比較
+
+- 例: $X=$ 部屋数
+
+```{r}
+data |> 
+  mutate(
+    平均値 = mean(Price),
+    事例数 = n(),
+    .by = c(District, RoomNumber)
+  ) |> 
+  distinct(
+    平均値,
+    District,
+    RoomNumber,
+    事例数
+  ) |> 
+  arrange(
+    RoomNumber,
+    District
+  ) |> 
+  rename(
+    `X=RoomNumber` = RoomNumber
+  )
+```
+
+## サブグループ分析
+
+```{r}
+data |> 
+  mutate(
+    平均値 = mean(Price),
+    事例数 = n(),
+    .by = c(District, RoomNumber)
+  ) |> 
+  distinct(
+    平均値,
+    District,
+    RoomNumber,
+    事例数
+  ) |> 
+  pivot_wider(
+    names_from = District,
+    values_from = c(平均値,事例数)
+  ) |> 
+  mutate(
+    平均差 = 平均値_港区 - 平均値_練馬区
+  ) |> 
+  select(
+    -平均値_港区,
+    -平均値_練馬区
+  ) |> 
+  rename(
+    `X=RoomNumber` = RoomNumber
+  )
+```
+
+- 注: 単純な平均差は、 `r round(mean(data$Price[data$District == "港区"]) - mean(data$Price[data$District == "練馬区"]),1)`
+
+- 部屋数が増えるにつれて、平均差は増加傾向にある
+
+  - 部屋数4については、このデータでは、比較不可能
+
+## サブグループ分析の限界
+
+- $X$ の組み合わせが増えると、
+
+  - サブグループの事例数が減る
+  
+    - 推定の精度が悪化
+    
+    - 練馬/港区のどちらかしかないグループでは、比較不可能
+    
+  - 大量の平均差が計算され、人間が認識できなくなる
+  
+- 追加的な仮定のもとで、より単純なモデルの推定を行う方が現実的
+
+## 例: $X = [$Tenure, Distance $]$
+
+```{r}
+data |> 
+  mutate(
+    平均値 = mean(Price),
+    事例数 = n(),
+    .by = c(District,Tenure,Distance)
+  ) |> 
+  distinct(
+    平均値,
+    District,
+    Tenure,
+    Distance,
+    事例数
+  ) |> 
+  pivot_wider(
+    names_from = District,
+    values_from = c(事例数,平均値)
+  ) |> 
+  mutate(
+    平均差 = 平均値_港区 - 平均値_練馬区
+  ) |> 
+  select(
+    -平均値_港区,
+    -平均値_練馬区
+  ) |> 
+  arrange(
+    Tenure,
+    Distance
+  )
+```
+
+# OLSを用いた調整
+
+## よくある例
+
+```{r}
+#| echo: true
+#| label: tbl-conventional
+estimatr::lm_robust(
+  Price ~ District + Tenure + Distance, 
+  data)
+```
+
+- $\beta_D=-81.99$ は、Tenure/Distance をバランスさせた後の比較結果と見做せるか？
+
+## 妥当な定式化
+
+- 「十分な事例数 $+$ ランダムサンプルング $+$ "妥当な定式化"」     であれば、$\beta_D$ はバランス後の比較結果と一致する
+
+- 妥当な定式化
+
+  - 適当な$\beta_0,\beta_1$ を選べば、 $$E[Y\mid D,X]=\beta_0 + \beta_D \times \underbrace{District}_{D} + \beta_1 \times \underbrace{Tenure}_{X_1}$$ $$ + \beta_2 \times \underbrace{Distance}_{X_2}$$
+
+## 実践上の問題
+
+- シンプルな定式化は、"妥当な定式化"ではない可能性を疑うべき
+
+- より複雑な定式化を用いれば、妥当な定式化である可能性が高まる
+
+  - 過剰適合が生じ、推定精度が悪化する
+  
+    - 信頼区間自体も"信頼できなくなる"
+    
+## 定式化の分解
+
+- $$E[Y\mid D,X]=\beta_0 + \beta_D \times District + \beta_1 \times Tenure$$ $$ + \beta_2 \times Distance$$ $$=\underbrace{\beta_D \times District}_{Dに関する部分(Interest)}$$ $$+ \underbrace{\beta_0 + \beta_1 \times Tenure + \beta_2 \times Distance}_{Xに関する部分(Nuisance)}$$
+
+## 妥当な定式化の前提
+
+- "Interest"が十分に複雑に定式化されている
+
+- @tbl-conventional では、「$E[Y\mid D=1,X]-E[Y\mid D=0,X]=\beta_D$ は一定」を仮定
+
+  - 現実にはおそらく異なる
+  
+    - 広めの部屋の方が、港区-練馬区間の格差が大きい
+    
+  - 次回以降に対応策を議論
+
+## 妥当な定式化の前提
+
+- $E[Y\mid D=1,X]-E[Y\mid D=0,X]\underbrace{\approx}_{ほぼ一定}\beta_D$ であれば、
+
+- "nuisance"が十分に複雑に定式化されていればOK
+
+## 例: 二乗と交差項の導入
+
+```{r}
+#| echo: true
+estimatr::lm_robust(
+  Price ~ District + 
+    (Tenure + Distance)^2 +
+    I(Tenure^2) + I(Distance^2),
+  data)
+```
+
+## 実践上の問題
+
+- $X$ の数が多い場合、二乗項や交差項を導入すると、変数の数が爆発的に増える
+
+  - $X=[$ Size,Tenure,Distance,RoomNumber $]$ について、二乗項や交差項を作成すると15個の $\beta$ を推定する必要がある
+
+- 過剰適合が生じ、推定誤差の拡大や信頼区間が信頼できなくなる等の問題が生じる
+
+## LASSO?
+
+- OLSに比べて、LASSOは複雑なモデルの推定に"適している"
+
+  - 推定精度を改善できる
+  
+- 基本的に、信頼区間がうまく計算できない
+
+  - データと推定結果の関係性が、OLSに比べて"複雑であり"、どう計算すれば良いか、現状でも議論が続いている
+
+## Takeaway
+
+- 目標: 「母集団におけるバランス後の比較結果」について、**概ね正しい結論**を得たい
+
+- OLSを用いた暫定的結果は、
+
+  - 港区と練馬区の取引価格の平均格差は、6947 $\sim$ 1億65万円程度
+  
+  - [Tenure, Distance]をバランスした場合、6834 $\sim$ 9856万円程度
+  
+  - [Tenure, Distance,Size,RoomNumber]をバランスした場合、404 $\sim$ 2348 万円程度
+
+## Takeaway: Positive
+
+- バランスさせたい属性 $X$ が少数であれば、OLSは有力な選択肢
+
+  - 仮定: $E[Y\mid D=1,X]-E[Y\mid D=0,X]=\beta_D$ も緩めることができる
+  
+  - ただし伝統に用いられてきた定式化は単純すぎることが多いので、二乗項や交差項を導入すべき
+  
+- LASSOは信頼区間の計算が難しいという問題を持つ
+
+## Takeaway: Negative
+
+- バランスさせたい属性 $X$ が多い場合、OLSもLASSOも問題がある
+
+- OLSは、複雑なモデルの推定に向かいない
+
+- LASSOは、引き続き信頼区間の計算が難しい
+
+## Reference

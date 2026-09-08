@@ -1,0 +1,667 @@
+---
+title: "OLS/LASSOを活用した近似的バランス"
+subtitle: "機械学習入門"
+author:
+  - name: 川田恵介
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+bibliography: "ref.bib"
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: true
+---
+
+```{r}
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv")
+```
+
+
+# 近似的バランス
+
+- 事例数が限られる多くの応用において、$X$の完璧なバランスは不可能
+
+    - 事例数が限られる一方で、バランスさせたい$X$が多いため
+    
+- 近似的なバランスを目指す
+
+    - 多くの発展的手法(含む機械学習の応用)は、近似的バランスの一つの手法であると解釈できる
+    
+## 近似的なバランスを達成する手法
+
+- $X$ 分布全体をバランス
+
+    - 代表例: 傾向スコアを活用した[Inverse Probability Weight](https://en.wikipedia.org/wiki/Inverse_probability_weighting)
+
+- $X$ 分布の特徴 (平均や分散、共分散) をバランス
+
+    - 代表例: OLS
+    
+        - 発展としてPost-Double-LASSO
+
+- 事例数に比べて、$X$ の組み合わせが多い (連続変数が含まれている/$X$の種類が多い)場合でも活用できる
+
+## 例: バランス
+
+```{r}
+Data |> 
+  cobalt::bal.tab(
+    D ~ Size + Tenure + Distance + Price,
+    data = _
+  ) |> 
+  cobalt::love.plot(
+    abs = FALSE
+  )
+```
+
+
+## 例: 事例数
+
+- $Sizeの種類 \times Distanceの種類 \times Tenureの種類 =$ `r length(unique(Data$Size))*length(unique(Data$Distance))*length(unique(Data$Tenure))`
+
+- 事例数 5577 を超える
+
+
+## 定義: 平均値のバランス
+
+- $X$ の平均値を$D=1/0$ で均質化する
+
+    - 一般に平均値をBalance するWeightは無数に存在する
+
+## OLSによる平均値のバランス
+
+- $Y\sim D + \underbrace{X_1 + .. X_L}_{ダミーである必要はない}$ をOLS推定することで計算される $D$ の係数値は、
+
+    - $X_1,..,X_L$ の平均値をバランスさせた「バランス後の比較」と解釈できる!!!
+
+## 例: Sizeのバランス
+
+```{r}
+Data |> 
+  filter(
+    Size %in% c(55,75,90)
+  ) |> 
+  mutate(
+    `Yの平均値` = mean(Price) |> round(1),
+    N = n(),
+    .by = c(D,Size)
+  ) |> 
+  distinct(
+    `Yの平均値`,
+    D,
+    Size,
+    N
+  ) |> 
+  mutate(
+    `Sizeの割合` = (N/sum(N)) |> round(3),
+    .by = D
+  ) |> 
+  arrange(
+    Size,
+    D
+  ) |> 
+  gt::gt() |> 
+  gt::tab_style(
+    style = gt::cell_fill(color = "lightblue"),
+    locations = gt::cells_body(
+      rows = D == 1
+    )
+  )
+```
+
+## 例: OLSの結果
+
+```{r}
+Temp = Data |> 
+  filter(
+    Size %in% c(55,75,90)
+  ) |> 
+  mutate(
+    Exact = lmw::lmw(
+      ~ D + factor(Size),
+      data = pick(everything())
+      ) |> 
+      magrittr::extract2("weights"),
+    OLS = lmw::lmw(
+      ~ D + Size,
+      data = pick(everything())
+      ) |> 
+      magrittr::extract2("weights")
+  ) |> 
+  mutate(
+    `Yの平均値` = mean(Price),
+    N = n(),
+    .by = c(D,Size)
+  )
+
+Temp |> 
+  distinct(
+    `Yの平均値`,
+    D,
+    Size,
+    N,
+    OLS,
+    Exact
+  ) |> 
+  mutate(
+    `Sizeの割合` = (N/sum(N)),
+    .by = D
+  ) |> 
+  mutate(
+    OLS = OLS*`Sizeの割合`,
+    完璧なバランス = Exact*`Sizeの割合`
+  ) |> 
+  arrange(
+    Size,
+    D
+  ) |> 
+  select(
+    `Yの平均値`,
+    D,
+    Size,
+    N,
+    `Sizeの割合`,
+    OLS,
+    完璧なバランス
+  ) |> 
+  gt::gt() |> 
+  gt::tab_style(
+    style = gt::cell_fill(color = "lightblue"),
+    locations = gt::cells_body(
+      rows = D == 1
+    )
+  ) |> 
+  gt::fmt_number(decimals = 3, drop_trailing_zeros = TRUE) 
+```
+
+- $$\beta_D= 0.341\times 54.075 + 0.553\times 71.725 + 0.106\times 101.887$$ $$-0.361\times 45.884 + 0.508\times 62.688 + 0.13\times 84$$
+
+## 例: OLS VS 完璧なバランス
+
+```{r, dev='ragg_png'}
+estimatr::lm_robust(
+  Price ~ D,
+  Data
+) |>
+  estimatr::tidy() |>
+  filter(
+    term == "D"
+  )  |> 
+  mutate(
+    Method = "バランスさせない"
+  ) |> 
+  bind_rows(
+    estimatr::lm_robust(
+  Price ~ D + factor(Size),
+  Data
+) |>
+  estimatr::tidy() |>
+  filter(
+    term == "D"
+  )  |> 
+  mutate(
+    Method = "完全なバランス"
+  )
+  ) |> 
+  bind_rows(
+    estimatr::lm_robust(
+  Price ~ D + Size,
+  Data
+) |>
+  estimatr::tidy() |>
+  filter(
+    term == "D"
+  )  |> 
+  mutate(
+    Method = "平均値のバランス"
+  )
+  ) |> 
+  ggplot(
+    aes(
+      y = Method,
+      x = estimate
+    )
+  ) +
+  theme_bw() +
+  geom_point() +
+  xlab("Yのバランス後の平均差")
+```
+
+
+## まとめ: 完璧 VS OLSによる近似的バランス
+
+- OLSを用いても、$X$ の分布の完全なバランスは達成できない
+
+- 平均値はバランス: $D=0/1$ の平均Size $\simeq$ `r mean((Temp$Size*Temp$OLS)[Temp$D == 0]) |> round(2)`
+
+- 元々は $D=1$ については `r mean(Temp$Size[Temp$D == 1]) |> round(2)` 、 $D=0$ については `r mean(Temp$Size[Temp$D == 0]) |> round(2)`
+
+
+# OLSの性質
+
+- 複数の変数についても、平均値をバランスできる
+
+- 「母集団で仮想的に実行した」バランス後の比較の優れた推定値となる
+
+## OLSの利点: 複数の$X$のバランス
+
+- Size, Distance, Tenure, District, 全ての平均値をバランスさせる
+    
+- ダミー化した変数については、分布がバランスする
+
+    - Districtについては、分布がバランスする
+    
+        - 23区の立地割合が、2021年と2023年で同じになるように調整される
+
+## OLSの利点
+
+- 本来やりたい比較 (Size,Distance,Tenure,Districtのバランス) に到達するためには、以下の二つの手法が考えられる
+
+    - 一部の変数 (Size) に絞って、完璧にバランスさせる
+    
+    - すべての変数とOLSを用いて、平均値のみバランスさせる
+
+- 一般に後者の方が、本来やりたい比較に近づける場合が多いと考えられる
+
+## 母集団への含意
+
+- データ上でのOLSの推定結果は、「PopulationにおけるOLSによる平均値のバランス後の比較」の優れた推定値とみなせる
+
+    - OLSは母集団におけるOLSの優れた推定値であり、信頼区間も計算できる
+    
+        - 事例数が、(組み合わせではなく) $X$ の数に比べて、十分に多いことが前提
+
+## 例: バランス後の平均差
+
+```{r,dev='ragg_png'}
+estimatr::lm_robust(
+  Price ~ D,
+  Data
+) |>
+  estimatr::tidy() |>
+  filter(
+    term == "D"
+  )  |> 
+  mutate(
+    Method = "No Balance"
+  ) |> 
+  bind_rows(
+    estimatr::lm_robust(
+  Price ~ D + factor(Size),
+  Data
+) |>
+  estimatr::tidy() |>
+  filter(
+    term == "D"
+  )  |> 
+  mutate(
+    Method = "Sizeの完全なバランス"
+  )
+  ) |> 
+  bind_rows(
+    estimatr::lm_robust(
+  Price ~ D + Size + Distance + Tenure + District,
+  Data
+) |>
+  estimatr::tidy() |>
+  filter(
+    term == "D"
+  )  |> 
+  mutate(
+    Method = "Size/District/Tenure/Distanceの平均値のバランス"
+  )
+  ) |> 
+  ggplot(
+    aes(
+      y = Method,
+      x = estimate,
+      xmin = conf.low,
+      xmax = conf.high
+    )
+  ) +
+  theme_bw() +
+  geom_pointrange() +
+  ylab("")
+```
+
+## さらなるバランス
+
+- "平均値"のみならず分散などもバランスできる
+
+- $Y\sim D + X + X^2$ を推定すれば、$X$の平均値と分散もバランス
+
+- $Y\sim D + X_1 + X_2 + X_1^2 + X_2 + X1*X2$ を推定すれば、$X_1,X_2$の平均値と分散、共分散もバランス
+
+- 増やしすぎると、推定誤差が大きくなる
+
+## 補論: 分散/共分散
+
+- 分散: $X_1$ のばらつきを捉える指標
+
+    - $(X_1 - X_1の平均値)^2$ の平均値
+
+- 共分散: $X_1$ と $X_2$ の相関関係を捉える指標
+
+    - $(X_1 - X_1の平均値)\times (X_2 - X_2の平均値)$ の平均値
+
+## 例: バランス後の平均差
+
+```{r, dev='ragg_png'}
+estimatr::lm_robust(
+  Price ~ D,
+  Data
+) |>
+  estimatr::tidy() |>
+  filter(
+    term == "D"
+  )  |> 
+  mutate(
+    Method = "No Balance"
+  ) |> 
+  bind_rows(
+    estimatr::lm_robust(
+  Price ~ D + factor(Size),
+  Data
+) |>
+  estimatr::tidy() |>
+  filter(
+    term == "D"
+  )  |> 
+  mutate(
+    Method = "Sizeの完全なバランス"
+  )
+  ) |> 
+  bind_rows(
+    estimatr::lm_robust(
+  Price ~ D + Size + Distance + Tenure + District,
+  Data
+) |>
+  estimatr::tidy() |>
+  filter(
+    term == "D"
+  )  |> 
+  mutate(
+    Method = "Size/District/Tenure/Distanceの平均値のバランス"
+  )
+  ) |> 
+  bind_rows(
+    estimatr::lm_robust(
+  Price ~ D + (Size + Distance + Tenure + District)**2 +
+    I(Size^2) + I(Distance^2) + I(Tenure^2),
+  Data
+) |>
+  estimatr::tidy() |>
+  filter(
+    term == "D"
+  )  |> 
+  mutate(
+    Method = "Size/District/Tenure/Distanceの平均値と分散、共分散をバランス"
+  )
+  ) |> 
+  ggplot(
+    aes(
+      y = Method,
+      x = estimate,
+      xmin = conf.low,
+      xmax = conf.high
+    )
+  ) +
+  theme_bw() +
+  geom_pointrange() +
+  ylab("") 
+```
+
+## OLSの解釈
+
+- 平均値をバランスさせる方法は、無数に存在する
+
+    - OLSはその中の一つ
+
+- $Y=\beta_0+\beta_DD+\beta_1X_1+..+\beta_LX_L+u$ をOLSで推定した $\beta_D$ は、以下の性質を満たしたバランス後の比較と一致
+
+    - $X_1..X_L$ の平均値をバランス
+
+    - 推定の精度が高く、信頼区間が狭くなる傾向
+    
+    - 問題のある性質も持つ (後述)
+
+
+## 母集団におけるバランス後の比較
+
+- 平均値のバランスではなく、「母集団における分布のバランス後の比較」の推定値とみなすには、追加の仮定が必要
+
+    - 母集団においてoverlapが成り立っている
+    
+        - すべての $X$ の組み合わせについて、 $D=0/1$ どちらの事例も、**母集団においては**、存在する
+
+    - $Y\sim D + X_1 +..+X_L$ の母集団における OLSが「分布のバランス後の比較」と一致するためには、母平均が$X$の平均値のみに依存している
+
+## 実践
+
+- 一般に分布をどこまでバランスさせれば十分なのか、よくわからない
+
+- 変数選択を活用しつつ、$X$ の二乗項と交差項までをバランスさせるのが、現状の私的おすすめ
+
+- 元々の$X$が多い場合、機械学習による変数選択の併用が有効 (次章)
+
+# OLSの問題点
+
+- モデルに投入した全ての$X$を、"強引"バランスさせてしまう
+
+    - $Y$ との関係性/Overlapしているかしていないかも無視指定しまう
+    
+## 例: "昔の出席簿"データ
+
+```{r}
+Temp = tibble(
+  ID = seq(1,6),
+  Gender = c(rep("男性",3),rep("女性",3)),
+  TestScore = c(60,60,60,60,60,100)
+) 
+
+Temp |> 
+  gt::gt()
+```
+
+- 女性の平均点の方が高い
+
+- 出欠番号は、"男性"からあいうえお順
+    
+    - "成績と関係ない"
+      
+    - 男女間で"バランスさせよう"がない
+
+## 例: "昔の出席簿"データ
+
+```{r}
+#| echo: true
+lm(TestScore ~ Gender + ID,
+   data = Temp)
+```
+
+- IDをバランスさせると「男性の方が平均的が高くなる」
+
+    - どうやってバランスさせているのか？
+
+## 例: 問題点
+
+```{r}
+tibble(
+  ID = seq(1,6),
+  Gender = c(rep("男性",3),rep("女性",3)),
+  TestScore = c(60,60,60,60,60,100)
+) |> 
+  mutate(
+    Target = lmw::lmw(
+      ~ Gender + ID,
+      data = pick(everything())
+    ) |> 
+      magrittr::extract2("weights")
+  ) |> 
+  mutate(
+    Target = Target/3
+  ) |> 
+  gt::gt()
+```
+
+- マイナスの割合を目標 にする(???)ことで、平均値を1.61に「バランス」させている
+
+## 例: 問題点
+
+```{r}
+Temp = tibble(
+  ID = seq(1,6),
+  Gender = c(rep("男性",3),rep("女性",3)),
+  TestScore = c(10,60,60,60,60,100)
+) 
+
+Temp |> 
+  gt::gt()
+```
+
+- 一番(男性)の成績が悪かったとする
+
+## 例: 問題点
+
+- 出席番号をバランスさせると、男性の成績が悪くなっているのに、男性の平均点が女性よりもさらに高くなる(!!?)
+
+
+```{r}
+#| echo: true
+lm(TestScore ~ Gender + ID,
+   data = Temp)
+```
+
+## 実践
+
+- 研究者が背景知識を用いて、推定対象や$X$ を注意深く選ぶ
+
+    - 母集団において、Overlapが成り立つように、分析事例を限定
+    
+    - $Y$ と関係ない$X$の排除
+
+- 後者については、機械学習を活用したデータ主導の変数選択も補完的に用いることができる
+
+# Double Selection
+
+```{r}
+X = Data |> 
+  model.matrix(
+    ~ 0 + (Size + Distance + Tenure + District)**2 +
+    I(Size^2) + I(Distance^2) + I(Tenure^2),
+    data = _
+  ) |> 
+  scale()
+
+PDS = hdm::rlassoEffect(
+  x = X,
+  y = Data$Price,
+  d = Data$D
+)
+```
+
+- $X$ の中から **重要な変数** を選ぶ
+
+    - LASSOを使用
+
+    - 予測とは、機械学習を用いたとしても一定確率でミスを犯すこと、**重要性の基準** が異なることに注意
+    
+        - "AIによるダブルチェック"を実施させる
+
+## 問題設定
+
+- 労働研究では、バランスさせたい$X$が大量に存在するケースも多い
+
+- 例: $Y=$ 年収、$D=$ 性別、 $X=$ ついている仕事の特徴
+    
+    - 同じ働き方をしている男女内賃金格差
+
+    - $X=$ 労働時間、勤続年数、業務内容、それらの交差項...
+    
+        - 全てをBalanceさせることができない/推定精度が大幅に悪化する
+
+## アイディア
+
+- $X$ 全てが"重要"なわけではないかもしれない
+
+    - $X$ の一部 $Z$ のみをバランスさせれば十分
+    
+- 仮定: (Approximately) sparsity: 事例数に比べて、十分に少ない変数数 $<<$ 事例数で、母平均をうまく近似できる
+
+    - もともとのモデルには、"trivial"な変数も含まれていると仮定
+
+## LASSOの活用
+
+- **$Y$ を予測するために**「重要ではない」$X$を削除する
+
+- Naiveなアイディア: $X$ を全てバランスさせるのではなく、LASSOが$Y$を予測するために選んだ変数のみをバランスさせる
+
+## 問題点
+
+- 問題点: 限られた事例数のもとで、LASSOによる変数選択は、$Y$ とそこそこ相関がある変数も除外されてしまう可能性がある
+
+    - $Y$ の近似が目的であれば、(Hyper parmeterが正しく選ばれている限り)、許容できる 
+
+- $D$ との相関が強い (分布の分断が激しい)な変数が除外されると $\beta_D$ の推定結果が大きな影響を受ける
+
+    - バランス後の比較という目標に対して、モデルが過度に単純化される (Regulization bias)
+
+## 例: Naiveなアイディアが機能しやすいケース
+
+- $Y,D,X$ が以下のような関係性があるとすると
+
+    - $Yの平均値 = D + \times X$
+
+    - $Dの平均値 = 0.1\times X$
+
+- $Y$ と $X$ の関係性が強いので、$X$は除外されにくい
+
+## 例: 機能しにくいケース
+
+- $Y,D,X$ が以下のような関係性があるとすると
+
+    - $Yの平均値 = D + 0.1\times X$
+
+    - $Dの平均値 = X$
+
+- $Y$ と $X$ の関係性が弱いので、$X$は除外されやすい
+
+    - $D$ との関係性は強いので、除外すると母集団におけるバランス後の比較から大きく乖離してしまう
+
+## Double Selection
+
+1. $Y$ および $D$ を予測するモデルを、LASSOで推定し、選択された変数を記録
+
+2. **どちらかの**予測モデルで選択された変数 $(Z)$ のみを用いて、 $Y\sim D + Z$ を回帰
+
+- 重要な変数を誤って除外しないように、$Y$の予測モデルと$D$の予測モデルに"ダブルチェック"を行わせている
+
+    - 今後の機械学習の活用における基本アイディア
+
+## 性質
+
+- Approximate sparcityが成り立っていると、緩やかな理論的家庭のもとで、信頼区間を近似計算できる
+
+    - ある程度の事例数が前提
+
+## まとめ
+
+- 「限られた事例数のもとで、多くの$X$をバランスさせる」を達成するために、適切な近似を重ねていく
+
+    - OLS: 平均値や分散などのみをバランスさせることで、近似的なバランスを達成する
+    
+        - 変数が多いと、これでも多すぎるので、さらに近似する
+        
+            - Double Selection: 重要な条件のみをバランスする

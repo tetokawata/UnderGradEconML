@@ -1,0 +1,338 @@
+---
+title: "異質性分析"
+subtitle: "機械学習入門"
+author:
+  - name: 川田恵介
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+bibliography: "ref.bib"
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: true
+---
+
+# 異質性
+
+- バランスさせた後の比較
+
+    - 格差/因果分析の重要ツール
+    
+- ここまで: 平均的な差に焦点
+
+    - ここから: 異質性も含めて理解したい
+    
+## @fukai2021describing
+
+- コロナ前(2019年)と後(2020年)の4~6月の就業率を比較したい
+
+    - COVIDとその対応策の影響を間接的に評価する
+
+- $Y=$ 就業状態、$D=$ 2020/2019、$X=$ 年齢等の基礎変数 $+$ 前年の就業状態
+
+- 平均的な差は限定的
+
+    - 就業状態が流動的であると考えられる、一部の層に大きな影響がある
+
+
+## 個人因果効果の予測
+
+- 個人ごとに因果効果が予測できれば、
+
+    - 医療行為の個別化: "きき方"/副反応の深刻さ、に応じて医療行為を変える
+    
+        - ある医療の行為の因果効果を、$X$から予測する
+    
+    - 単位取得計画のサジェスト: 学生の志望進路や興味関心などに応じて、おすすめ単位取得を示す
+    
+        - 講義の受講の因果効果を、$X$から予測する
+
+- 実務の例: [EconML (MicroSoft)](https://econml.azurewebsites.net/), [CausalML (Uber)](https://causalml.readthedocs.io/en/latest/about.html)
+
+## 職業訓練の効果
+
+- フランスにおける実験: 職業訓練の提供主体を公的機関/民間企業にランダムに割り付ける
+
+- @behaghel2014private : 平均的には公的機関の方が効果的
+
+    - @kallus2023treatment : 異質性が大きい
+
+    - 一部の労働者によって公的機関による訓練の影響が強いだけで、平均的には民間企業の訓練の方が効果的
+
+# バランス後の比較: 再訪
+
+```{r}
+set.seed(111)
+
+library(tidyverse)
+
+EstBoost <- function(train_y, train_x, test_x) {
+  group = sample(
+    1:2,
+    length(train_y),
+    replace = TRUE,
+    prob = c(0.8,0.2)
+  )
+  
+  train = lightgbm::lgb.Dataset(
+    train_x[group == 1,] |> data.matrix(),
+    label = train_y[group == 1]
+  )
+  
+  validate = lightgbm::lgb.Dataset(
+    train_x[group == 2,] |> data.matrix(),
+    label = train_y[group == 2]
+  )
+  
+  pred = lightgbm::lgb.train(
+    data = train,
+    params = list(
+      objective = "regression",
+      learning_rate = 0.001
+    ),
+    nrounds = 50000,
+    valids = list(test = validate),
+    early_stopping_rounds = 100,
+    verbose = 0
+    ) |> 
+    predict(test_x |> 
+              data.matrix())
+  
+  return(pred)
+}
+
+
+Data = read_csv("Public/Example.csv") |> 
+  mutate(
+    EmebedSize = mean(Size),
+    EmbedTenure = mean(Tenure),
+    EmbedDistance = mean(Size),
+    .by = District
+  )
+
+Group = sample(
+  1:2,
+  nrow(Data),
+  replace = TRUE
+)
+
+Data$HatY_OLS = lm(
+  Price ~ (Tenure + Size + Distance + District)**2 + 
+    splines::bs(Tenure,3) + splines::bs(Size,3) + splines::bs(Distance,3), 
+  Data,
+  subset = Group == 1
+  ) |> 
+  predict(Data) |> 
+  as.numeric()
+
+
+Data$HatD_OLS = lm(
+  D ~ (Tenure + Size + Distance + District)**2 + 
+    splines::bs(Tenure,3) + splines::bs(Size,3) + splines::bs(Distance,3), 
+  Data,
+  subset = Group == 1
+  ) |> 
+  predict(Data) |> 
+  as.numeric()
+
+Data$HatY_RF = ranger::ranger(
+  Price ~ Tenure + Size + Distance + EmebedSize + EmbedTenure + EmbedDistance,
+  Data[Group == 1,]
+  ) |> 
+  predict(Data) |> 
+  magrittr::extract2("predictions") |> 
+  as.numeric()
+
+Data$HatD_RF = ranger::ranger(
+  D ~ Tenure + Size + Distance + EmebedSize + EmbedTenure + EmbedDistance,
+  Data[Group == 1,]
+  ) |>
+  predict(Data) |> 
+  magrittr::extract2("predictions") |> 
+  as.numeric()
+
+Data$HatY_GBM = EstBoost(
+  train_y = Data$Price[Group == 1],
+  train_x = Data[Group == 1,] |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    ),
+  test_x = Data |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    )
+)
+
+Data$HatD_GBM = EstBoost(
+  train_y = Data$D[Group == 1],
+  train_x = Data[Group == 1,] |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    ),
+  test_x = Data |> 
+    select(
+      Tenure,
+      Size,
+      Distance,
+      EmebedSize,
+      EmbedTenure,
+      EmbedDistance
+    )
+)
+
+Data = Data |> 
+  mutate(
+    HatY = lm(
+      Price ~ HatY_RF + HatY_OLS + HatY_GBM,
+      pick(everything()),
+      subset = Group == 2
+    ) |> 
+      predict(pick(everything())) |> 
+      as.numeric(),
+    HatD = lm(
+      D ~ HatD_RF + HatD_OLS + HatD_GBM,
+      pick(everything()),
+      subset = Group == 2
+    ) |> 
+      predict(pick(everything())) |> 
+      as.numeric(),
+    OhtY = Price - HatY,
+    OhtD = D - HatD
+  )
+```
+
+
+## バランス後の比較
+
+- 現実のSizeの割合は、取引年に応じて異なる
+
+    - Targetとバランスさせる
+
+```{r, dev='ragg_png'}
+Data |> 
+  filter(
+    Size %in% c(75,90)
+  ) |> 
+  mutate(
+    `Yの平均値` = mean(Price) |> round(1),
+    N = n(),
+    .by = c(D,Size)
+  ) |> 
+  distinct(
+    `Yの平均値`,
+    D,
+    Size,
+    N
+  ) |> 
+  mutate(
+    `Sizeの割合` = (N/sum(N)) |> round(3),
+    .by = D
+  ) |> 
+  mutate(
+    Target = c(0.5,0.5,0.5,0.5)
+  ) |> 
+  arrange(
+    Size,
+    D
+  ) |> 
+  gt::gt() |> 
+  gt::tab_style(
+    style = gt::cell_fill(color = "lightblue"),
+    locations = gt::cells_body(
+      rows = D == 1
+    )
+  )
+```
+
+
+## バランス後の平均差
+
+```{r, dev='ragg_png'}
+tibble(
+  `Yの平均差` = c(71.7-62.7,101.9-84.0),
+  Size = c(75,90),
+  Target = c(0.5,0.5)
+  ) |> 
+  gt::gt()
+```
+
+- 一旦$X$内で平均差を計算した後に、平均値を計算する
+
+- ここまでの議論: バランス後の平均差 $= 90\times 0.5 + 17.9\times 0.5=13.5$
+
+    - バランス後の平均差のみでは、Sizeによって平均差が異なる情報は廃棄される
+
+
+## 再解釈
+
+- ここまで: $X内でのD間のYの平均値の差$ を一つの数値 $\beta_0$ で近似する
+
+- これから: $X内でのD間のYの平均値の差$ をシンプルなモデル $\beta_0 + \beta_1X_1+..+\beta_LX_L$ で近似する
+
+    - 平均差が$X_1,..,X_L$に応じて、どのように異なるのか、知見をもたらす
+    
+## 復習: 線型モデルの機能
+
+- $Y\sim X_1+..+X_L$ で推定して、$Y$ と $X$ の特徴を**人間**が理解するためのモデルを推定する
+
+    - 人間の理解を要求しない予測モデルと比べて、単純なモデルである必要がある
+
+## R learnerの拡張
+
+- ここまで: $Y - E[Y|X]\sim D - E[D|X]$ をOLSで推定
+
+- これから: $$Y - E[Y|X]\sim \underbrace{(D - E[D|X])}_{主効果}$$ $$+ \underbrace{X_1\times (D - E[D|X])+..+X_L\times (D-E[D|X])}_{交差項}$$ をOLSで推定
+
+## 解釈
+
+- 主効果 $\simeq$ ここまでバランス後の平均差
+
+- 交差項 $X_l\times (D-E[D|X])\simeq$ 平均差が$X_l$が増加した場合に、どのように変化するか
+
+## 例
+
+```{r}
+estimatr::lm_robust(
+  OhtY ~ 0 + OhtD + 
+    OhtD:scale(Size) + OhtD:scale(Tenure) + OhtD:scale(Distance),
+  Data,
+  subset = Group == 2
+  ) |> 
+  dotwhisker::dwplot() +
+  theme_bw()
+```
+
+## 発展
+
+- 異質性の推定については、多くの手法が提案され、現在でも研究が続いている
+
+    - 参照: [CausalML](https://causalml-book.org/) : Chap. 14-15
+
+## Reference
+
+

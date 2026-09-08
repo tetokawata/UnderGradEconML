@@ -1,0 +1,59 @@
+---
+title: "まとめ"
+subtitle: "機械学習入門"
+author:
+  - name: 川田恵介
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+bibliography: "ref.bib"
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: true
+---
+
+# まとめ
+
+- ３つの分析ゴールについて、それぞれの方法を紹介した
+
+- 継続学習としては、 [@chernozhukov2024applied](https://causalml-book.org/) がもっともおすすめ
+
+## 記述: Slide02-03
+
+- 人間が把握できるように、分布の特徴を要約する
+
+    - 例: 平均差/OLS
+    
+        - 特徴についての推定誤差が推定できる
+    
+- 伝統的な統計学的手法が比較的有効
+
+## 予測: Slide 04/08
+
+- 各事例について、$Y$ の値を予測する
+
+    - 予測モデルそのものは、最悪人間が理解できなくてもOK
+    
+- 機械学習が比較的有効
+
+## 説明 (What If): 06/07/09
+
+- $X$ の分布を操作した後に、$Y$ と $D$ の関係性を記述する
+
+    - バランス後の比較
+
+- 統計学 $+$ 機械学習 が有望視
+
+## Reference
+
+

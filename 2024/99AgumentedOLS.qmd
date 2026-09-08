@@ -1,0 +1,232 @@
+---
+title: "OLS weights with agumentation"
+subtitle: "機械学習入門"
+author:
+  - name: 川田恵介
+format: 
+    typst:
+      fig-format: retina
+      section-numbering: 1.1.1.
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: false
+---
+
+# Balancing weight
+
+$$f(x)=f(x|d)\omega(d,x)$$
+
+$$\omega(d,x)=\frac{f(x)}{f(x|d)}$$
+
+$$=\frac{f(d)}{f(d|x)}$$
+
+- OLS directly estimate the balancing weights with moment balancing.
+
+- 
+
+
+# Example
+
+```{r, dev='ragg_png'}
+
+Result <- list()
+set.seed(111)
+
+library(tidyverse)
+
+Data <- read_csv("Public/Example.csv") |>
+  mutate(
+    Y = Price
+  ) |>
+  mutate(
+    EmbedSize = mean(Size),
+    EmbedTenure = mean(Tenure),
+    EmbedDistance = mean(Size),
+    .by = District
+  )
+
+Group <- sample(
+  1:2,
+  nrow(Data),
+  replace = TRUE
+)
+
+Data$HatY_OLS_D1 <- lm(
+  Y ~ (Tenure + Size + Distance + District)**2 +
+    splines::bs(Size, 3) + splines::bs(Tenure, 3) + splines::bs(Distance, 3),
+  Data,
+  subset = Group == 1 & D == 1
+) |>
+  predict(Data) |>
+  as.numeric()
+
+Data$HatY_OLS_D0 <- lm(
+  Y ~ (Tenure + Size + Distance + District)**2 +
+    splines::bs(Size, 3) + splines::bs(Tenure, 3) + splines::bs(Distance, 3),
+  Data,
+  subset = Group == 1 & D == 0
+) |>
+  predict(Data) |>
+  as.numeric()
+
+Data$HatD_OLS <- lm(
+  D ~ (Tenure + Size + Distance + District)**2 +
+    splines::bs(Size, 3) + splines::bs(Tenure, 3) + splines::bs(Distance, 3),
+  Data,
+  subset = Group == 1
+) |>
+  predict(Data) |>
+  as.numeric()
+
+
+Data$HatY_RF_D1 <- ranger::ranger(
+  Y ~ Tenure + Size + Distance + EmbedSize + EmbedTenure + EmbedDistance,
+  data = Data[Group == 1 & Data$D == 1, ]
+) |>
+  predict(Data) |>
+  magrittr::extract2("predictions") |>
+  as.numeric()
+
+Data$HatY_RF_D0 <- ranger::ranger(
+  Y ~ Tenure + Size + Distance + EmbedSize + EmbedTenure + EmbedDistance,
+  data = Data[Group == 1 & Data$D == 0, ]
+) |>
+  predict(Data) |>
+  magrittr::extract2("predictions") |>
+  as.numeric()
+
+Data$HatD_RF <- ranger::ranger(
+  D ~ Tenure + Size + Distance + EmbedSize + EmbedTenure + EmbedDistance,
+  data = Data[Group == 1,]
+) |>
+  predict(Data) |>
+  magrittr::extract2("predictions") |>
+  as.numeric()
+
+
+Data$HatY_D1 <- lm(Y ~ HatY_RF_D1 + HatY_OLS_D1,
+  Data,
+  subset = Group == 2 & D == 1
+) |>
+  predict(Data) |>
+  as.numeric()
+
+Data$HatY_D0 <- lm(Y ~ HatY_RF_D0 + HatY_OLS_D0,
+  Data,
+  subset = Group == 2 & D == 0
+) |>
+  predict(Data) |>
+  as.numeric()
+
+Data$HatD <- lm(D ~ HatD_RF + HatD_OLS,
+  Data,
+  subset = Group == 2
+) |>
+  predict(Data) |>
+  as.numeric()
+
+MeanD = mean(Data$D)
+
+Data$WeightIPW = case_when(
+  Data$D == 1 ~ MeanD/(Data$HatD),
+  Data$D == 0 ~ (1 - MeanD)/(1 - Data$HatD)
+)
+
+Data$WeightOLS = lmw::lmw(
+  ~ D + Tenure + Size + Distance + District,
+  Data,
+  method = "MRI"
+) |>
+  magrittr::extract2("weights")
+
+Data$WeightEbal = WeightIt::weightit(
+  D ~ Tenure + Size + Distance + District,
+  Data,
+  method = "ebal",
+  estimand = "ATE"
+  ) |> 
+  magrittr::extract2("weights")
+
+
+boxplot(
+  Data$WeightOLS,
+  Data$WeightEbal,
+  Data$WeightIPW
+)
+
+Result$StackY_D1 = lm(Y ~ HatY_RF_D1 + HatY_OLS_D1,
+  Data,
+  subset = Group == 2 & D == 1
+)
+
+
+Result$StackY_D0 = lm(Y ~ HatY_RF_D0 + HatY_OLS_D0,
+  Data,
+  subset = Group == 2 & D == 0
+)
+
+Result$Data = Data
+
+Plugin <- Data$HatY_D1 - Data$HatY_D0
+
+
+Adjust <- case_when(
+  Data$D == 1 ~ (Data$WeightEbal/MeanD) * (Data$Y - Data$HatY_D1),
+  Data$D == 0 ~ -(Data$WeightEbal/(1 - MeanD)) * (Data$Y - Data$HatY_D0)
+)
+
+AdjustIPW <- case_when(
+  Data$D == 1 ~ (Data$WeightIPW/MeanD) * (Data$Y - Data$HatY_D1),
+  Data$D == 0 ~ -(Data$WeightIPW/(1 - MeanD)) * (Data$Y - Data$HatY_D0)
+)
+
+Score <- Plugin + Adjust
+
+ScoreIPW <- Plugin + AdjustIPW
+
+estimatr::lm_robust(
+  Y ~ D + Tenure + Size + Distance + District,
+  Data,
+  subset = Group == 2
+) |>
+  generics::tidy() |>
+  filter(term == "D") |>
+  mutate(
+    Method = "OLS"
+  ) |>
+  bind_rows(
+    estimatr::lm_robust(
+      Score ~ 1,
+      subset = Group == 2
+    ) |>
+      generics::tidy() |>
+      mutate(
+        Method = "OLS + Agumentaiton"
+      )
+  ) |>
+  bind_rows(
+    estimatr::lm_robust(
+      ScoreIPW ~ 1,
+      subset = Group == 2
+    ) |>
+      generics::tidy() |>
+      mutate(
+        Method = "AIPW"
+      )
+  ) |>
+  ggplot(
+    aes(
+      y = Method,
+      x = estimate,
+      xmin = conf.low,
+      xmax = conf.high,
+      label = str_c(estimate |> round(3)," (", std.error |> round(3),")")
+    )
+  ) +
+  theme_bw() +
+  geom_pointrange() +
+  ggrepel::geom_text_repel()
+
+```

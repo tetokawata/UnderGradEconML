@@ -1,0 +1,68 @@
+---
+title: "宿題2"
+format: 
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc-depth: 3
+    number-sections: true
+execute:
+  echo: false
+  eval: true
+  warning: false
+  message: false
+---
+
+提出方法: Posit cloudからダウンロードしたScriptFileを、Musashi 3Sをアップロードする
+
+提出物: スクリプトファイルに分析コードと、記述問題の回答をコメントの形で書き込む
+
+提出期限: 11月19日の講義開始前まで
+
+# Q1
+
+以下の10事例からなるデータについて、Priceの予測モデルを作成したいとする
+
+```{r}
+Data = readr::read_csv("Public/Example.csv") |> 
+  dplyr::select(Price,Size,Reform,Tenure) |> 
+  dplyr::filter(Reform == 1) |> 
+  head(5) |> 
+  dplyr::bind_rows(
+    readr::read_csv("Public/Example.csv") |> 
+  dplyr::select(Price,Size,Reform,Tenure) |> 
+  dplyr::filter(Reform == 0) |> 
+  head(5)
+  )
+
+Data |> 
+  gt::gt()
+```
+
+ただし$D$は取引年であり、$D=1$は2023、$D=0$は2021年に取引されていることを表す。
+
+OLSで推定を行い、信頼区間を計算した結果は以下であった
+
+```{r}
+#| echo: true
+
+library(estimatr)
+
+lm_robust(Price ~ Reform, Data)
+
+lm_robust(Price ~ Reform + Tenure + Size, Data)
+```
+
+
+1. 推定式にSizeとTenureを加えると、改築済み/未改築間の平均取引価格差が縮小した。
+これはなぜか、バランスというキーワードを用いながら説明せよ
+    
+2. Tenure,Sizeのバランスに、二重選択を活用すことの利点は何か?
+
+3. 上記で推定された信頼区間は、推定に用いたデータの性質から、「あまり信頼できない」。その理由を述べよ
+
+# Q2
+
+講義で用いたデータを使って、Y = Size, D = Reformを、Tenure,District,Priceをバランスさせて推定せよ
+
+- 複雑な定式化を用いて、OLSと二重選択法両方を実行し、信頼区間も計算せよ

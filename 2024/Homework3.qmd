@@ -1,0 +1,47 @@
+---
+title: "宿題3"
+format: 
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc-depth: 3
+    number-sections: true
+execute:
+  echo: false
+  eval: true
+  warning: false
+  message: false
+---
+
+提出方法: Posit cloudからダウンロードしたScriptFileを、Musashi 3Sをアップロードする
+
+提出物: スクリプトファイルに分析コードと、記述問題の回答をコメントの形で書き込む
+
+提出期限: 12月25日まで
+
+# Q1
+
+- R learnerを以下の手順で実行したとする
+
+1. $Y$ と $D$ の予測モデルを、全データとOLSとRandomForestのStackingで推定する
+
+2. $Y$ の予測誤差 $Y-Yの予測値$ 、 $D$ の予測誤差 $D-Dの予測値$ を前データで計算する
+
+3. $Y$ の予測誤差と$D$ の予測誤差を、全データでOLS推定する
+
+- 上記手順には、明らかな誤りがある。間違っている点とその改善策を述べよ
+
+# Q2
+
+- R learnerが以下の手法に対してもつ利点を端的に述べよ
+
+    - $Y\sim D + X_1 + .. + X_L$ をOLSで推定すると
+    
+    - Post selection (LASSO)
+    
+# Q3
+
+GithubのPublic folder内のデータ (Homework3.csv) を用いて、立地(CBD = 1; 中心６区に立地、CBD = 0; それ以外に立地)とPriceの関係性を、Size,Distance,Tenureをバランスさせた後に比較せよ
+
+- ddmlパッケージが提供するddml_plm関数を使用し、OLSとRandomForestのStacking法を用いること
+    

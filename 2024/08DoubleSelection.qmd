@@ -1,0 +1,111 @@
+---
+title: "近似的バランス: LASSOの活用"
+subtitle: "労働経済学2"
+author:
+  - name: 川田恵介
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+bibliography: "ref.bib"
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: true
+---
+
+```{r}
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv")
+```
+
+# Double LASSO
+
+```{r}
+X = Data |> 
+  model.matrix(
+    ~ 0 + (Size + Distance + Tenure + District)**2 +
+    I(Size^2) + I(Distance^2) + I(Tenure^2),
+    data = _
+  ) |> 
+  scale()
+
+PDS = hdm::rlassoEffect(
+  x = X,
+  y = Data$Price,
+  d = Data$D
+)
+
+PDS$selection.index
+
+PDS |> summary()
+```
+
+# 変数選択
+
+- $X$ の中から **重要な変数** を選ぶ
+
+    - LASSOを使用
+
+    - 予測とは、機械学習を用いたとしても一定確率でミスを犯すこと、**重要性の基準** が異なることに注意
+    
+        - "AIによるダブルチェック"を実施させる
+
+## 問題設定
+
+- 労働研究では、バランスさせたい$X$が大量に存在するケースも多い
+
+- 例: $Y=$ 年収、$D=$ 性別、 $X=$ ついている仕事の特徴
+    
+    - 同じ働き方をしている男女内賃金格差
+
+    - $X=$ 労働時間、勤続年数、業務内容、それらの交差項...
+    
+        - 全てをBalanceさせることができない/推定精度が大幅に悪化する
+
+## アイディア
+
+- $X$ 全てが"重要"なわけではないかもしれない
+
+    - $X$ の一部 $Z$ のみをバランスさせれば十分
+    
+- 仮定: (Approximately) sparsity: 事例数に比べて、十分に少ない変数数 $S<<$ 事例数で、母平均をうまく近似できる
+
+    - もともとのモデルには、"trivial"な変数も含まれていると仮定
+
+## LASSOの活用
+
+- **$Y$ を予測するために**「重要ではない」$X$を削除する
+
+- Naiveなアイディア: $X$ を全てバランスさせるのではなく、$Y$ との相関が強いものだけをバランスさせる
+
+    - $g_Y(X)$ をLASSOで推定し、選択された変数だけをOLSに加える
+
+## 問題点
+
+- 問題点: LASSOによる変数選択は、$Y$ とそこそこ相関がある変数も除外されてしまう可能性がある
+
+    - $Y$ の近似が目的であれば、(Tuning parmeterが正しく選ばれている限り)、許容できる 
+
+- $D$ との相関が強い (分布の分断が激しい)な変数が除外されると $\beta_D$ の推定結果が大きな影響を受ける
+
+    - バランス後の比較という目標に対して、モデルが過度に単純化される (Regulization bias)
+
+## Double Selection Algorithm
+
+1. $g_Y(X)$ および $g_D(X)$ をLASSOで推定し、選択された変数を記録
+
+2. **どちらかの**予測モデルで選択された変数 $(Z)$ のみを用いて、 $Y\sim D + Z$ を回帰
+
+- $Y$の予測モデルと$D$の予測モデルによる"ダブルチェック"
+
+## Reference

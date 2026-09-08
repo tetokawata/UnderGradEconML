@@ -1,0 +1,51 @@
+---
+title: "宿題1"
+format: 
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc-depth: 3
+    number-sections: true
+execute:
+  echo: false
+  eval: true
+  warning: false
+  message: false
+---
+
+提出方法: Posit cloudからダウンロードしたScriptFileを、Musashi 3Sをアップロードする
+
+提出物: スクリプトファイルに分析コードと、記述問題の回答をコメントの形で書き込む
+
+提出期限: 10月16日の講義開始前まで
+
+# Q1
+
+以下のデータについて、Priceの予測モデルを作成したいとする
+
+```{r}
+readr::read_csv("Public/Example.csv") |> 
+  dplyr::select(Price,Size) |> 
+  head() |> 
+  gt::gt()
+```
+
+1. $f(X)=\beta_0 + \beta_1Size$ をOLSで推定する場合に比べて、$f(X)=\beta_0 + \beta_1Size + \beta_2Size^2 + \beta_3Size^3$ をOLSで推定した場合の利点と欠点は何か?
+
+    - 過剰適合というキーワードは必ず用いよ
+    
+2. $f(X)=\beta_0 + \beta_1Size + \beta_2Size^2 + \beta_3Size^3$ をLASSOで推定した場合の利点は何か?
+
+3. LASSOで推定したモデルとOLSで推定したモデルの実際の予測性能を比較するためには、どのような方法を用いるべきか?
+
+# Q2
+
+講義で用いたデータを使用して、築年数(Tenure)を予測するモデルを推定し、その性能を評価せよ
+
+    - ２種類以上の$X$ は各自自由に選択
+
+1. OLSで推定
+
+2. LASSOで推定
+
+    - hdmパッケージを使用

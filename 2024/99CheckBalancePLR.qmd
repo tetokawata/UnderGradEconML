@@ -1,0 +1,159 @@
+---
+title: "Double/Debiased Machine Learning"
+subtitle: "機械学習入門"
+author:
+  - name: 川田恵介
+format: 
+    typst:
+      fig-format: retina
+      section-numbering: 1.1.1.
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: true
+---
+
+# Partial linear model
+
+Estimate $Y - f_Y(X)\sim D - f_D(X)$, which can be rewriten as
+
+$$Y\simeq\beta_D D  + \underbrace{f_Y(X) - \beta_D f_D(X)}_{=f(X)}$$
+
+
+## 例: Sizeのバランス
+
+```{r, dev='ragg_png'}
+set.seed(111)
+
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv") |> 
+  mutate(
+    Price = Price |> log()
+  ) |> 
+  mutate(
+    EmebedSize = mean(Size),
+    EmbedTenure = mean(Tenure),
+    EmbedDistance = mean(Size),
+    .by = District
+  )
+
+Group = sample(
+  1:2,
+  nrow(Data),
+  replace = TRUE
+)
+
+Data$HatY_OLS = lm(
+  Price ~ poly(Size,4), 
+  Data,
+  subset = Group == 1
+  ) |> 
+  predict(Data) |> 
+  as.numeric()
+
+
+Data$HatD_OLS = lm(
+  D ~ poly(Size,4), 
+  Data,
+  subset = Group == 1
+  ) |> 
+  predict(Data) |> 
+  as.numeric()
+
+Data$HatY_RF = ranger::ranger(
+  Price ~ Size,
+  Data[Group == 1,]
+  ) |> 
+  predict(Data) |> 
+  magrittr::extract2("predictions") |> 
+  as.numeric()
+
+Data$HatD_RF = ranger::ranger(
+  D ~ Size,
+  Data[Group == 1,]
+  ) |>
+  predict(Data) |> 
+  magrittr::extract2("predictions") |> 
+  as.numeric()
+
+
+Data$HatY = lm(Price ~ HatY_RF + HatY_OLS,
+   Data,
+   subset = Group == 2) |> 
+  predict(Data)|> 
+  as.numeric()
+
+Data$HatD = lm(D ~ HatD_OLS + HatD_RF ,
+   Data,
+   subset = Group == 2) |> 
+  predict(Data)|> 
+  as.numeric()
+
+Data$HatY_Within_OLS = lm(Price ~ Size,
+   Data,
+   subset = Group == 1) |> 
+  predict(Data)|> 
+  as.numeric()
+
+Data$HatD_Within_OLS = lm(D ~ Size,
+   Data,
+   subset = Group == 1) |> 
+  predict(Data)|> 
+  as.numeric()
+
+
+PLR = lm(
+  TempY ~ 0 + TempD, 
+  Data |> 
+    mutate(
+      TempY = Price - HatY, 
+      TempD = D - HatD),
+  subset = Group == 2
+   )
+
+lm(Price ~ 0 + D + HatY_Within_OLS + HatD_Within_OLS,
+   Data,
+   subset = Group == 2)
+
+lm(Price ~ 0 + D + HatY_OLS + HatD_OLS,
+   Data,
+   subset = Group == 2)
+
+Result = Data |> 
+  filter(Group == 2)
+
+Result$OLSWeight = lmw::lmw(
+  ~ 0 + D + HatY_Within_OLS + HatD_Within_OLS, 
+  Data[Group == 2,]) |> 
+  magrittr::extract2("weights")
+
+
+Result$Weight = lmw::lmw(
+  ~ 0 + D + HatD + HatY,
+  Data[Group == 2,]) |> 
+  magrittr::extract2("weights")
+
+Fig1 = cobalt::bal.tab(
+  D ~ poly(Size,4),
+  data = Result,
+  weights = "Weight"
+) |> 
+  cobalt::love.plot() +
+  xlab("PLR")
+
+Fig2 = cobalt::bal.tab(
+  D ~ poly(Size,4),
+  data = Result,
+  weights = "OLSWeight"
+) |> 
+  cobalt::love.plot() +
+  xlab("OLS")
+
+cowplot::plot_grid(
+  Fig1 + theme(legend.position = "none"),
+  Fig2+ theme(legend.position = "none"),
+  ncol = 1
+  )
+```

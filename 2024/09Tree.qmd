@@ -1,0 +1,833 @@
+---
+title: "予測問題発展: モデル集計"
+subtitle: "機械学習入門"
+author:
+  - name: 川田恵介
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+bibliography: "ref.bib"
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: true
+---
+
+```{r, dev='ragg_png'}
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv")
+
+Num_New = 1
+
+SupportSize = seq(20,100,1)
+
+SimData <- function(i, n, s = 5) {
+  set.seed(i)
+  
+  Size = SupportSize |> 
+    c(sample(
+    SupportSize,
+    n - length(SupportSize),
+    replace = TRUE
+    ))
+  
+  TruePrice = case_when(
+    Size <= 50 ~ 0,
+    Size >= 51 & Size <= 70 ~ 5,
+    Size >= 71 ~ 7
+  )
+
+  Temp = tibble(
+    TruePrice,
+    Size
+    ) |> 
+    mutate(
+      Price = TruePrice + runif(n,-s,s),
+      Type = "Constant"
+    )
+  return(Temp)
+}
+```
+
+
+# 復習
+
+## 予測問題
+
+- $X$ から $Y$ を予測する
+
+- 「$(Y - 予測モデル)^2$ の平均値」を予測性能の指標とするのであれば、
+
+    - $Y$ の母平均が理想的な予想モデル
+
+## OLS と LASSO
+
+- 予測モデルの大枠 $\beta_0 + \beta_1X_1 + ..+ \beta_LX_L$ を**研究者**が設定、$\beta$ をデータにより決定
+
+- OLS: 複雑にしすぎる ($\beta$ の数を増やしすぎる) と、
+    
+    - データに過剰適合
+        
+    - 母平均から乖離
+        
+    - 予測性能が悪化
+
+- LASSO: **データ主導**で、複雑さを抑制する
+
+## 例: OLS: Price ~ Size
+
+```{r, dev='ragg_png'}
+SimData(1,200,s=5) |> 
+  bind_rows(
+    tibble(
+      Size = 100,
+      TruePrice = 7,
+      Price = 30
+    )
+  ) |> 
+  mutate(
+    予測モデル = lm(
+      Price ~ poly(Size,1),
+      data = pick(everything())
+    ) |> 
+      predict(pick(everything()))
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = TruePrice
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = Price
+    )
+  ) +
+  geom_line(
+    aes(
+      color = "母平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = 予測モデル,
+      color = "予測モデル"
+    )
+  )
+```
+
+## 例: OLS: Price ~ Size + .. + Size^6
+
+```{r, dev='ragg_png'}
+SimData(1,200,s=5) |> 
+  bind_rows(
+    tibble(
+      Size = 100,
+      TruePrice = 7,
+      Price = 30
+    )
+  ) |> 
+  mutate(
+    予測モデル = lm(
+      Price ~ poly(Size,6),
+      data = pick(everything())
+    ) |> 
+      predict(pick(everything()))
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = TruePrice
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = Price
+    )
+  ) +
+  geom_line(
+    aes(
+      color = "母平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = 予測モデル,
+      color = "予測モデル"
+    )
+  )
+```
+
+## 例: LASSO: Price ~ Size + .. + Size^6
+
+```{r, dev='ragg_png'}
+SimData(1,200,s=5) |> 
+  bind_rows(
+    tibble(
+      Size = 100,
+      TruePrice = 7,
+      Price = 30
+    )
+  ) |> 
+  mutate(
+    予測モデル = hdm::rlasso(
+      Price ~ poly(Size,6),
+      data = pick(everything())
+    ) |> 
+      predict(pick(everything()))
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = TruePrice
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = Price
+    )
+  ) +
+  geom_line(
+    aes(
+      color = "母平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = 予測モデル,
+      color = "予測モデル"
+    )
+  )
+```
+
+## 決定木 モデル
+
+- OLSやLASSOは線型モデル ($\beta\times X$ の足し算のモデル)と呼ばれる分類
+
+    - 母平均によっては、異なってモデルの方が適する
+    
+    - 代表例は決定木(サブグループ平均)モデル (01Introduction参照)
+    
+        - サブグループ平均値を予測値とする
+
+## 例: 決定木
+
+- Size $\in [-50,50-70,70-]$ に分割し、平均値を計算
+
+```{r, dev='ragg_png'}
+SimData(1,200,s=5) |> 
+  bind_rows(
+    tibble(
+      Size = 100,
+      TruePrice = 7,
+      Price = 30
+    )
+  ) |> 
+  mutate(
+    Cut = case_when(
+      Size <= 50 ~ 1,
+      Size > 50 & Size <= 70 ~ 2,
+      Size > 70 ~ 3
+    )
+  ) |> 
+  mutate(
+    予測モデル = mean(Price),
+    .by = Cut
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = TruePrice
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = Price
+    )
+  ) +
+  geom_line(
+    aes(
+      color = "母平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = 予測モデル,
+      color = "予測モデル"
+    )
+  )
+```
+
+## 例: 決定木
+
+- Size $\in [-30,30-80,80-]$ に分割し、平均値を計算
+
+
+```{r, dev='ragg_png'}
+SimData(1,200,s=5) |> 
+  bind_rows(
+    tibble(
+      Size = 100,
+      TruePrice = 7,
+      Price = 30
+    )
+  ) |> 
+  mutate(
+    Cut = case_when(
+      Size <= 30 ~ 1,
+      Size > 30 & Size <= 80 ~ 2,
+      Size > 80 ~ 3
+    )
+  ) |> 
+  mutate(
+    予測モデル = mean(Price),
+    .by = Cut
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = TruePrice
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = Price
+    )
+  ) +
+  geom_line(
+    aes(
+      color = "母平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = 予測モデル,
+      color = "予測モデル"
+    )
+  )
+```
+
+
+## 決定木の難しさ
+
+- サブグループの定義に予測性能が決定的に依存する
+
+    - OLSと類似
+    
+- データ主導の決定木
+
+    - データへの適合度を最大化するようにグループの定義を決定
+
+## 例: データ主導の決定木
+
+- 最大2分割、最小サンプルサイズ $=$ 5
+
+```{r, dev='ragg_png'}
+SimData(1,100,s=5) |> 
+  bind_rows(
+    tibble(
+      Size = 100,
+      TruePrice = 7,
+      Price = 30
+    )
+  ) |> 
+  mutate(
+    予測モデル = rpart::rpart(
+      Price ~ Size,
+      data = pick(everything()),
+      control = rpart::rpart.control(
+        maxdepth = 2,
+        minbucket = 5,
+        minsplit = 5,
+        cp = 0
+      )
+    ) |> 
+      predict(
+        pick(everything())
+      )
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = TruePrice
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = Price
+    )
+  ) +
+  geom_line(
+    aes(
+      color = "母平均"
+    )) +
+  geom_line(
+    aes(
+      y = 予測モデル,
+      color = "予測モデル"
+    )
+  )
+```
+
+## 例: データ主導の決定木
+
+- 最大30分割/最小事例数1
+
+```{r, dev='ragg_png'}
+SimData(1,100,s=5) |> 
+  bind_rows(
+    tibble(
+      Size = 100,
+      TruePrice = 7,
+      Price = 30
+    )
+  ) |> 
+  mutate(
+    予測モデル = rpart::rpart(
+      Price ~ Size,
+      data = pick(everything()),
+      control = rpart::rpart.control(
+        maxdepth = 30,
+        minbucket = 1,
+        minsplit = 1,
+        cp = 0
+      )
+    ) |> 
+      predict(
+        pick(everything())
+      )
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = TruePrice
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = Price
+    )
+  ) +
+  geom_line(
+    aes(
+      color = "母平均"
+    )) +
+  geom_line(
+    aes(
+      y = 予測モデル,
+      color = "予測モデル"
+    )
+  )
+```
+
+## 複雑さの影響
+
+- 複雑なモデル $=$ 分割数が多い
+
+    - 少数事例の平均値を予測値となるので、事例の偏りの影響が大きい
+    
+        - 母平均から乖離する可能性が高くなる
+
+- LASSOとは異なり、モデルの単純化は行わない
+
+    - 何らかの方法で単純化する必要がある
+    
+        - 剪定などの多様な方法があるが、ここではモデル集計を紹介
+
+# モデル集計: Random Forest
+
+- 複雑なモデルを推定すると、母平均から大きく乖離した事例(ハズレ値)の影響を強く受ける
+
+    - 多様な予測モデルを沢山作り、その予測の平均値を最終予測とする
+
+## 直感
+
+- 「不適当な予測」が生じる大きな原因は、「観察した事例の偏り」
+
+    - どれだけ「情報処理」に長けた「専門家」でも、偏った経験により、極端な予測を行いうる
+    
+    - 誰にこのような現象が生じているのか、事前にはわからない
+
+- 解決策: 複数の専門家の予測を集計し、極端な予測の影響を緩和する
+
+## イメージ: モデル集計
+
+- 複数データを用いて、予測モデルを作る
+
+```{dot}
+digraph {
+    rankdir=TB;
+    node[shape = box];
+    Data [label = "母集団" shape = none fontsize = "10pt"]
+    Boot1 [label = "訓練データ1 {Y={2,2,4},X={7,7,1}}" shape = none fontsize = "10pt"]
+    Boot2 [label = "訓練データ2 {Y={10,2,2},X={5,7,7}}" shape = none fontsize = "10pt"]
+    Boot3 [label = "訓練データ3 {Y={10,10,4},X={5,5,1}}" shape = none fontsize = "10pt"]
+    Model1 [label = "予測モデル1 g(X=30)=6" shape = none fontsize = "10pt"]
+    Model2 [label = "予測モデル2 g(X=30)=7" shape = none fontsize = "10pt"]
+    Model3 [label = "予測モデル3 g(X=30)=8" shape = none fontsize = "10pt"]
+    Summary [label = "平均" shape = none fontsize = "10pt"]
+    Prediction [label = "最終予測=8" shape = none fontsize = "10pt"]
+    Data -> Boot1 -> Model1
+    Data -> Boot2 -> Model2
+    Data -> Boot3 -> Model3
+    Model1 -> Summary
+    Model2 -> Summary
+    Model3 -> Summary
+    Summary -> Prediction
+}
+```
+
+## ブートストラップ集約法 (Bagging)
+
+- 現実には、データは一つしか存在しない
+
+    - 訓練データからデータの複製を行い (ブートストラップ)、複製データから生成した予測モデルの平均値を算出する
+
+- ブートストラップ: あるデータから、ランダムに事例を抜き出し、新しいデータを作る
+
+    - 同じ事例を抜き出すことを許容する (復元抽出)
+
+## イメージ: Bagging
+
+- Bootstrap法を用いて、予測モデルを大量に作る (500-5000個程度)
+
+```{dot}
+digraph {
+    rankdir=TB;
+    node[shape = box];
+    Data [label = "訓練データ {Y={10,2,4},X={5,7,1}}" shape = none fontsize = "10pt"]
+    Boot1 [label = "複製データ1 {Y={2,2,4},X={7,7,1}}" shape = none fontsize = "10pt"]
+    Boot2 [label = "複製データ2 {Y={10,2,2},X={5,7,7}}" shape = none fontsize = "10pt"]
+    Boot3 [label = "複製データ3 {Y={10,10,4},X={5,5,1}}" shape = none fontsize = "10pt"]
+    Model1 [label = "予測モデル1 g(X)" shape = none fontsize = "10pt"]
+    Model2 [label = "予測モデル2 g(X)" shape = none fontsize = "10pt"]
+    Model3 [label = "予測モデル3 g(X)" shape = none fontsize = "10pt"]
+    Summary [label = "平均" shape = none fontsize = "10pt"]
+    Prediction [label = "最終予測" shape = none fontsize = "10pt"]
+    Data -> Boot1 -> Model1
+    Data -> Boot2 -> Model2
+    Data -> Boot3 -> Model3
+    Model1 -> Summary
+    Model2 -> Summary
+    Model3 -> Summary
+    Summary -> Prediction
+}
+```
+
+## 例: Bagging
+
+```{r, dev='ragg_png'}
+set.seed(111)
+Temp = SimData(1,100,s=5) |> 
+  bind_rows(
+    tibble(
+    Size = 100,
+    TruePrice = 7,
+    Price = 30)
+  )
+
+mosaic::resample(Temp) |> 
+  mutate(
+    Data = "複製データ1",
+    Pred = rpart::rpart(
+      Price ~ Size,
+      data = pick(everything()),
+      control = rpart::rpart.control(
+        maxdepth = 30,
+        cp = 0,
+        minbucket = 1,
+        minsplit = 1
+      )
+      
+    ) |> 
+      predict(pick(everything()))
+  ) |> 
+  bind_rows(
+    mosaic::resample(Temp) |> 
+      mutate(
+        Data = "複製データ2",
+        Pred = rpart::rpart(
+          Price ~ Size,
+          data = pick(everything()),
+          control = rpart::rpart.control(
+            maxdepth = 30,
+            cp = 0,
+            minbucket = 1,
+            minsplit = 1
+          )
+        ) |> 
+          predict(pick(everything()))
+      )
+  ) |> 
+  bind_rows(
+    mosaic::resample(Temp) |> 
+      mutate(
+        Data = "複製データ3",
+        Pred = rpart::rpart(
+          Price ~ Size,
+          data = pick(everything()),
+          control = rpart::rpart.control(
+            maxdepth = 30,
+            cp = 0,
+            minbucket = 1,
+            minsplit = 1
+          )
+        ) |> 
+          predict(pick(everything()))
+      )
+  ) |> 
+  bind_rows(
+    mosaic::resample(Temp) |> 
+      mutate(
+        Data = "複製データ4",
+        Pred = rpart::rpart(
+          Price ~ Size,
+          data = pick(everything()),
+          control = rpart::rpart.control(
+            maxdepth = 30,
+            cp = 0,
+            minbucket = 1,
+            minsplit = 1
+          )
+        ) |> 
+          predict(pick(everything()))
+      )
+  ) |> 
+  mutate(
+    Aggregate = mean(Pred),
+    .by = Size
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = Price
+    )
+  ) +
+  geom_point() +
+  geom_line(
+    aes(
+      y = Pred,
+      color = "予測"
+    )
+  )  +
+  geom_line(
+    aes(
+      y = TruePrice,
+      color = "母平均"
+    )
+  )  +
+  theme_bw() +
+  facet_wrap(~Data,ncol = 2)
+```
+
+## 多様な予測の集計
+
+- 一般に、ある程度の予測性能を前提に、多様な予測モデル(データの異なる情報を活用したモデル)を集計した方が性能改善が期待できる
+
+    - 全く同じ予測しか生み出さないモデルを集計しても意味がない
+    
+## Baggingの問題
+
+- 多くの応用で、一部の変数が強力な予測力を持つ
+    
+    - 不動産価格予測ではSize
+    
+- 限られた事例数のもとでは、他の(予測力をもつ)変数の情報が活用されない
+
+## イメージ: Bagging
+
+- 複製データ1
+
+```{r, dev='ragg_png'}
+Data |> 
+  mosaic::resample() |> 
+  select(Price,Tenure,Size,Distance,Area) |> 
+  rpart::rpart(
+    Price ~ .,
+    data =_,
+    control = rpart::rpart.control(
+      maxdepth = 3,
+      cp = 0
+    )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+## イメージ: Bagging
+
+- 複製データ2
+
+```{r, dev='ragg_png'}
+Data |> 
+  mosaic::resample() |> 
+  select(Price,Tenure,Size,Distance,Area) |> 
+  rpart::rpart(
+    Price ~ .,
+    data =_,
+    control = rpart::rpart.control(
+      maxdepth = 3,
+      cp = 0
+    )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+## RandomForest
+
+- 未活用の情報を利用するために、分割に使用できる変数もランダムに決める
+    
+    - 典型的には$\sqrt{元の変数数}$個の変数をランダムに選び、その中から分割に用いる変数を探す
+
+## イメージ: RandomForest
+
+- Sizeの使用を禁止すると
+
+```{r, dev='ragg_png'}
+Data |> 
+  mosaic::resample() |> 
+  select(Price,Tenure,Distance,Area) |> 
+  rpart::rpart(
+    Price ~ .,
+    data =_,
+    control = rpart::rpart.control(
+      maxdepth = 3,
+      cp = 0
+    )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+
+## RandomForest の利点
+
+- Bootstrapは、"ハズレ値"を含まないデータとそれを用いたモデルも生成される
+
+    - ハズレ値の影響を軽減できる
+    
+- 変数の一部を確率的に使用できなくすることで、モデル間で用いる変数の多様性が促進される
+
+    - より多くの変数の情報が活用できる
+
+- 注: モデル単位ではなく、サンプル分割ごとに、(元々の変数数のsquare root個)ランダムに使用禁止している
+
+## 実装
+
+- ranger関数 (rangerパッケージ)を使えば、lmと同じような文法で実装できる
+
+```{r}
+#| echo: true
+#| eval: false
+
+library(ranger)
+
+Group = sample(
+  1:2,
+  nrow(Data),
+  replace = TRUE)
+
+Train = Data[Group == 1,]
+Test = Data[Group == 2,]
+
+RF = ranger(Price ~ Size + Tenure + Distance, Train) # モデル推定
+
+predict(RF, Test)$predictions # 予測値の算出
+```
+
+
+# モデル集計: Stacking
+
+- 「多様な予測モデルの集計」をさらに推し進める
+
+- 異なるアルゴリズムが生み出すモデルを集計する
+
+## 動機
+
+- 予測モデルを生み出す多くのアルゴリズム (OLS/LASSO/Random Forest等) が提案されている
+
+    - モデル選択: どのアルゴリズムが最も適しているのか?
+    
+    - モデル集計: どのように予測を組み合わせれば良いのか?
+    
+## 復習:モデル選択
+
+- データを２分割 (訓練/テスト)し、訓練モデルで予測モデル群を推定し、テストデータで評価する
+
+- 最も性能の良いモデルを選択し、使用する
+
+## モデル集計
+
+- テストデータへの当てはまりが最も良くなるように、モデルを組み合わせる
+
+- 代表的な方法は、線型モデルの推定 $$\beta_{OLS}\times OLSの予測値 + \beta_{RF}RandomForestの予測値 + ...$$
+
+- $\beta$ をテストデータへの当てはまりを最大化するように推定
+
+## 実例
+
+```{r}
+#| echo: true
+library(tidyverse)
+library(ranger)
+library(hdm)
+
+Data = read_csv("Public/Example.csv")
+
+Group = sample(
+  1:2,
+  nrow(Data),
+  replace = TRUE
+)
+
+Train = Data[Group == 1,]
+Test = Data[Group == 2,]
+```
+
+## 予測
+
+```{r}
+#| echo: true
+OLS = lm(Price ~ Size + Distance + Tenure, Train)
+Test$PredOLS = predict(OLS, Test)
+
+LASSO = rlasso(Price ~ (Size + Distance + Tenure)**2 + 
+                 I(Size^2) + I(Distance^2) + I(Tenure^2),
+               Train)
+Test$PredLASSO = predict(LASSO, Test)[,1]
+
+RF = ranger(Price ~ Size + Distance + Tenure, Train)
+Test$PredRF = predict(RF,Test)$predictions
+```
+
+## Stacking
+
+```{r}
+#| echo: true
+lm(Price ~ PredOLS + PredLASSO + PredRF, Test)
+```
+
+- Random Forestの結果を強く反映したモデル
+
+    - OLSやLASSOの結果も活用
+
+## 他の実装
+
+- Stackingの実装については、多くの議論が積み上げられている
+
+    - 交差推定の活用 (後述) など

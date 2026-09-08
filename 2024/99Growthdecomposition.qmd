@@ -1,0 +1,29 @@
+---
+title: "Untitled"
+format: html
+execute: 
+  warning: false
+  message: false
+---
+
+## Pre-Tax
+
+$$E[W|1]f(1) - E[W|0]f(0)=(E[W|1] - E[W|0])f(0) + E[W|1][f(1)-f(0)]$$
+
+$$\frac{E[W|1]f(1) - E[W|0]f(0)}{E[W|0]f(0)}=\frac{E[W|1] - E[W|0]}{E[W|0]} + \frac{E[W|1][f(1)-f(0)]}{E[W|0]f(0)}$$
+
+```{r}
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv")
+
+EY_2023 = mean(Data$Price[Data$TradeY == 2023])
+EY_2021 = mean(Data$Price[Data$TradeY == 2021])
+ED = mean(Data$D)
+
+(EY_2023 - EY_2021)/EY_2021
+
+(EY_2023/EY_2021)*((ED - 1 + ED)/(1 - ED))
+```
+
+

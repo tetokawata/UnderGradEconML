@@ -1,0 +1,184 @@
+---
+title: "Untitled"
+fformat: 
+    typst:
+      fig-format: retina
+      section-numbering: 1.1.1.
+      bibliography: "CleanRef.bib"
+      bibliographystyle: "apa"
+---
+
+# ReadMe
+
+- Implement @van2023causal
+
+# SetUp
+
+```{r}
+library(tidyverse)
+library(recipes)
+
+Data = read_csv("Public/Example.csv") |> 
+  mutate(
+    Y = Price,
+    D1 = if_else(Area == "CBD",1,0),
+    D0 = if_else(Area == "CBD",0,1)
+  )
+
+Group = sample(
+  1:2,
+  Data |> nrow(),
+  replace = TRUE
+)
+
+```
+
+# Nuisance
+
+```{r}
+Data$Y_D1_OLS = lm(
+  Y ~ (Size + Distance + Size + D)**2 + I(Size^2) + I(Distance^2) + I(Size^2),
+  Data,
+  subset = Group == 1 & Data$D1 == 1
+  ) |> 
+  predict(Data)
+
+Data$Y_D0_OLS = lm(
+  Y ~ (Size + Distance + Size + D)**2 + I(Size^2) + I(Distance^2) + I(Size^2),
+  Data,
+  subset = Group == 1 & Data$D1 == 0
+  ) |> 
+  predict(Data)
+
+Data$D1_OLS = lm(
+  D1 ~ (Size + Distance + Size + D)**2 + I(Size^2) + I(Distance^2) + I(Size^2),
+  Data,
+  subset = Group == 1
+  ) |> 
+  predict(Data)
+
+Data$D0_OLS = lm(
+  D0 ~ (Size + Distance + Size + D)**2 + I(Size^2) + I(Distance^2) + I(Size^2),
+  Data,
+  subset = Group == 1
+  ) |> 
+  predict(Data)
+
+Data$Y_D1_RF = ranger::ranger(
+  Y ~ Size + Distance + Size + D,
+  Data[Group == 1 & Data$D1 == 1,]
+  ) |> 
+  predict(Data) |> 
+  magrittr::extract2("predictions")
+
+Data$Y_D0_RF = ranger::ranger(
+  Y ~ Size + Distance + Size + D,
+  Data[Group == 1 & Data$D1 == 0,]
+  ) |> 
+  predict(Data) |> 
+  magrittr::extract2("predictions")
+
+Data$D1_RF = ranger::ranger(
+  D1 ~ Size + Distance + Size + D,
+  Data[Group == 1,]
+  ) |> 
+  predict(Data) |> 
+  magrittr::extract2("predictions")
+
+Data$D0_RF = ranger::ranger(
+  D0 ~ Size + Distance + Size + D,
+  Data[Group == 1,]
+  ) |> 
+  predict(Data) |> 
+  magrittr::extract2("predictions")
+```
+
+## Stacking
+
+```{r}
+Data$Y_D1_Stack = lm(
+  Y ~ Y_D1_OLS + Y_D1_RF, 
+  Data, 
+  subset = Group == 2 & Data$D1 == 1) |> 
+  predict(Data)
+
+Data$Y_D0_Stack = lm(
+  Y ~ Y_D0_OLS + Y_D0_RF, 
+  Data, 
+  subset = Group == 2 & Data$D0 == 0) |> 
+  predict(Data)
+
+Data$D1_Stack = lm(
+  D1 ~ D1_OLS + D1_RF, 
+  Data, 
+  subset = Group == 2) |> 
+  predict(Data)
+
+Data$D0_Stack = lm(
+  D0 ~ D0_OLS + D0_RF, 
+  Data, 
+  subset = Group == 2) |> 
+  predict(Data)
+```
+
+
+## Calibration
+
+```{r}
+Y_D1_Calibrate = isoreg(
+  Data$Y_D1_Stack[Group == 2 & Data$D1 == 1],
+  Data$Y[Group == 2 & Data$D1 == 1]) |> 
+  as.stepfun()
+
+Data$Y_D1_Calibrate = Y_D1_Calibrate(Data$Y_D1_Stack)
+
+Y_D0_Calibrate = isoreg(
+  Data$Y_D0_OLS[Group == 2 & Data$D1 == 0],
+  Data$Y[Group == 2 & Data$D1 == 0]) |> 
+  as.stepfun()
+
+Data$Y_D0_Calibrate = Y_D0_Calibrate(Data$Y_D0_Stack)
+
+D1_Calibrate = isoreg(
+  Data$D1_Stack[Group == 2],
+  Data$D1[Group == 2]) |> 
+  as.stepfun()
+
+Data$D1_Calibrate = D1_Calibrate(Data$D1_Stack)
+
+D0_Calibrate = isoreg(
+  Data$D0_Stack[Group == 2],
+  Data$D0[Group == 2]) |> 
+  as.stepfun()
+
+Data$D0_Calibrate = D0_Calibrate(Data$D0_Stack)
+
+Data$Score = Data$Y_D1_Stack - Data$Y_D0_Stack +
+  case_when(
+    Data$D1 == 1 ~ (Data$Y - Data$Y_D1_Stack)/Data$D1_Stack,
+    Data$D1 == 0 ~ -(Data$Y - Data$Y_D0_Stack)/Data$D0_Stack
+  )
+
+Data$ScoreCalibrate = Data$Y_D1_Calibrate - Data$Y_D0_Calibrate +
+  case_when(
+    Data$D1 == 1 ~ (Data$Y - Data$Y_D1_Calibrate)/Data$D1_Calibrate,
+    Data$D1 == 0 ~ -(Data$Y - Data$Y_D0_Calibrate)/Data$D0_Calibrate
+  )
+
+Data |> 
+  gtsummary::tbl_summary(
+    by = D1,
+    statistic = list(gtsummary::all_continuous() ~ "{mean} ({min}, {max})")
+  )
+
+estimatr::lm_robust(
+  Score ~ scale(Size) + scale(Distance) + scale(Tenure) , 
+  Data, 
+  subset = Group == 2)
+
+estimatr::lm_robust(
+  ScoreCalibrate ~ scale(Size) + scale(Distance) + scale(Tenure), 
+  Data, 
+  subset = Group == 2)
+```
+

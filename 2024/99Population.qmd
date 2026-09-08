@@ -1,0 +1,444 @@
+---
+title: "母平均"
+subtitle: "機械学習"
+author: "川田恵介 (keisukekawata@iss.u-tokyo.ac.jp)"
+bibliography: "ref.bib"
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+execute:
+  echo: false
+  eval: true
+  warning: false
+  message: false
+---
+
+# 母分布
+
+```{r}
+library(tidyverse)
+set.seed(1)
+
+Data = read_csv("Public/Example.csv")
+```
+
+- データ分析における論点整理のために、母分布を導入
+
+    - 機械学習/統計学/計量経済学、全ての分野で用いられており、今後の講義や自学で学ぶ際に必須
+    
+        - 直接観察できない概念であり、人間の想像力に依拠
+        
+            - 合わない人には合わないかも?
+
+## データ分析の根本問題と解決策
+
+- 同じ社会や市場を対象にしたとしても、研究者によって
+
+    - 異なる予測モデルを推定する
+    
+    - モデルについて異なる評価を下す
+
+- 解決策: 全研究者共通の正答と各人の回答を分離
+
+## 解決策: 評価
+
+- 評価に用いる事例は、仮想的な集団(母集団)からランダムに選ばれると考える
+
+    - 母集団全体を用いた評価が正答
+    
+        - 選ばれた事例から計算された評価が、各人の回答
+
+- 現実においては、自身の回答しかわからないので、正答は誰も知らない
+
+    - 高校までの勉強とは決定的に異なる
+
+## 解決策: 評価
+
+- 理論的性質を用いて、評価の信頼性を議論
+
+- **大数の法則:** テストデータの事例数が十分あれば、回答(データ上での評価)と正答(母集団上での評価)は十分に近い値となる
+    
+    - データ全体の２割程度をテストに割くのが一般的
+    
+## 解決策: モデル推定
+
+- 想定: モデル推定に用いるデータも、評価に用いるデータと同じ母集団からランダムに選ばれているとする
+
+    - 本想定についての議論
+    
+- 最善の予測(正答)と完璧な予測を区別できる
+
+    - 「最善の予測に近い予測を生み出す」をガイドラインとして、推定方法を評価できる
+
+## 予測の誤差
+
+- 予測誤差: $Y-\underbrace{f(X)}_{予測値}$
+
+- 完璧な予測は以下を要求: 全ての事例について $$f(X)=Y$$
+
+- $X$ 内で個人差があれば、不可能
+
+    - $X=\{年齢、学歴、性別\}$ から $Y=賃金$ を完璧に予測するためには、「同じ年齢、学歴、性別であれば、賃金が全く同じ社会」が前提だが、ありえない
+
+## 最善の予測
+
+- 最善のモデル $=$ $(Y-\underbrace{f(X)}_{予測値})^2$ の母集団における平均値を最小化するモデル
+
+    - 動機: まぐれあたりではなく、平均的に上手くいく予測モデルを採用したい
+
+- 母集団を直接活動できれば、その平均値(母平均)が最善の予測モデル
+
+## 数値例
+
+- Yの平均値$=X^2$ もし $X< 0.4$ ならば
+
+- Yの平均値$=X^2 +2$ もし $X>= 0.4$ ならば
+
+## 数値例: データ
+
+```{r, dev='ragg_png'}
+Sim = function(n,i){
+  set.seed(i)
+  Temp = tibble(
+    X = sample(
+      seq(0,1,0.1),
+      n,
+      replace = TRUE
+    ),
+    TrueY = X^2 + 
+      case_when(
+        X < 0.4 ~ 0,
+        .default = 5
+      ),
+    Y = TrueY + rnorm(n,0,5)
+  )
+  return(Temp)
+}
+
+Sim(100,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Y
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    alpha = 0.2
+  ) +
+  geom_point(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  )+
+  ylim(-10,15)+
+  theme(
+    legend.position = "bottom"
+  )
+```
+
+## 数値例: 想像上の母平均の追記
+
+```{r, dev='ragg_png'}
+
+Sim(100,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Y
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    alpha = 0.2
+  ) +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均(=理想の予測モデル)"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  )+
+  ylim(-10,15)+
+  theme(
+    legend.position = "bottom"
+  )
+```
+
+## 数値例: OLSとの比較
+
+```{r, dev='ragg_png'}
+Sim(100,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = lm(
+      Y ~ X,
+      data = pick(everything())
+    ) |> 
+      predict(
+        pick(everything())
+      )
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = OLS,
+      color = "推定値: Y ~ X"
+    )
+  ) +
+  ylim(-10,15)+
+  theme(
+    legend.position = "bottom"
+  )
+```
+
+## 数値例: OLSとの比較
+
+```{r, dev='ragg_png'}
+Sim(100,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = lm(
+      Y ~ X,
+      data = pick(everything())
+    ) |> 
+      predict(
+        pick(everything())
+      ),
+    OLS2 = lm(
+      Y ~ poly(X,8),
+      data = pick(everything())
+    ) |> 
+      predict(
+        pick(everything())
+      )
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = OLS,
+      color = "推定値: Y ~ X"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = OLS2,
+      color = "推定値: Y ~ X + ... + X^8"
+    )
+  ) +
+  ylim(-10,15) +
+  theme(
+    legend.position = "bottom"
+  )
+```
+
+## 性質
+
+- データ上の平均値と母平均は、大きく乖離している
+
+- $Y\sim X$ のOLS推定結果は、母平均に近いが、"0.4でジャンプする"という性質を捉えられない
+
+- $Y\sim X +..+X^8$ は、データ上の平均値に近づいており、母平均から乖離している
+
+- 以上は事例数が少ないことにも起因
+
+    - 5000/50000事例まで増やすと?
+
+## 数値例: 5000
+
+```{r, dev='ragg_png'}
+Sim(5000,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = lm(
+      Y ~ X,
+      data = pick(everything())
+    ) |> 
+      predict(
+        pick(everything())
+      ),
+    OLS2 = lm(
+      Y ~ poly(X,8),
+      data = pick(everything())
+    ) |> 
+      predict(
+        pick(everything())
+      )
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = OLS,
+      color = "OLS: Y ~ X"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = OLS2,
+      color = "OLS: Y ~ X + X^2 + X^3 + X^4"
+    )
+  ) +
+  ylim(-10,15) +
+  theme(
+    legend.position = "bottom"
+  )
+```
+
+
+## 数値例: 50000
+
+```{r, dev='ragg_png'}
+Sim(50000,1) |> 
+  mutate(
+    MeanY = mean(Y),
+    .by = X
+  ) |> 
+  mutate(
+    OLS = lm(
+      Y ~ X,
+      data = pick(everything())
+    ) |> 
+      predict(
+        pick(everything())
+      ),
+    OLS2 = lm(
+      Y ~ poly(X,8),
+      data = pick(everything())
+    ) |> 
+      predict(
+        pick(everything())
+      )
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_point(
+    aes(
+      y = TrueY,
+      color = "母平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = MeanY,
+      color = "データ上の平均"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = OLS,
+      color = "OLS: Y ~ X"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = OLS2,
+      color = "OLS: Y ~ X + X^2 + X^3 + X^4"
+    )
+  ) +
+  ylim(-10,15) +
+  theme(
+    legend.position = "bottom"
+  )
+```
+
+## 性質
+
+- 事例数が増えると、
+
+1. 母平均とデータ上の平均が近づく
+
+2. "複雑なOLS"は、母平均に近づく
+
+3. 単純なOLSと母平均の乖離は、頭打ち
+
+- 複雑なモデルの予測力が上がる!!!

@@ -1,0 +1,408 @@
+---
+title: "概要"
+format:
+  typst:
+    fig-format: retina
+    mainfont: "Hiragino Mincho ProN"
+    number-sections: true
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+    embed-resources: true
+execute: 
+  warning: false
+  message: false
+  eval: true
+  echo: false
+---
+
+# 概念整理
+
+```{r}
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv") |> 
+  mutate(
+    District = District |> str_sub(1,-2)
+  )
+
+read_csv("Public/Example.csv") |> 
+  mutate(
+    District = District |> str_sub(1,-2)
+  ) |> 
+  filter(
+    year_2024 == 1
+  ) |> 
+  write_csv("Public/small.csv")
+```
+
+
+## データ分析法
+
+- 過去の経験や事例、歴史（データ）から学ぶ方法
+
+- 意思決定に役立つ情報提供を目指す
+
+    - 各顧客は、どのようなサービスを好みのか?
+    
+    - 事業全体で価格を上げると、どの程度需要が下がるのか?
+    
+    - どのような事業領域が伸びているのか?
+
+## 現状
+
+- 学術/実務機関から高い関心^[[Amazon](https://www.amazon.science/tag/causal-inference), [Cyber Agent](https://www.cyberagent.co.jp/techinfo/ai/tech/detail/id=24953), [Microsoft](https://www.microsoft.com/en-us/research/group/alice/),  [Mizuho](https://www.mizuho-fg.co.jp/dx/articles/ft-icml/index.html), [Netflix](https://research.netflix.com/research-area/experimentation-and-causal-inference), [Uber](https://www.uber.com/en-JP/blog/causal-inference-at-uber/)]
+
+- 参考文献: 事例紹介 $+$ 考察
+
+    - [予測マシンの世紀　AIが駆動する新たな経済](https://www.amazon.co.jp/gp/product/B07NJ6YY9G/ref=ppx_yo_dt_b_d_asin_title_o02?ie=UTF8&psc=1)
+
+## 近年の発展
+
+- 機械学習: 予測研究への応用がメイン
+
+  - 機械学習 $+$ 計量経済学/医療統計等を身につけることで、因果効果や格差研究等への応用も可能に
+
+    - 学部/大学院レベルの教科書^[[Applied Causal Inference Powered by ML and AI](https://causalml-book.org/)]が書かれる段階になっている
+
+## 到達目標
+
+- 自身でデータ分析を行うための入門
+
+    - データ分析の不完全性への対処に焦点
+
+- データ分析の結果を意思決定に活用するための必要知識の取得
+
+- エントリーシートなどに、"AI/機械学習を用いた不動産市場についての、予測・因果モデルを作成経験した経験あり"と書けるようにする
+
+# Get started
+
+## 一般的課題
+
+- データ分析を含む事例分析の共通課題
+
+  - 独立した分析チームに**同じ市場/社会**について、事例収集とデータ分析を依頼したとしても、同じ結論に到達し得ない
+    
+    - 誰がやっても、「水は100度で沸騰する」という結論に到達する理科の実験とは対照的
+
+## データ
+
+- 現代の分析では、大量の事例が含まれるデータを利用する機会が多い
+
+  - 実習では、`r nrow(Data)` の中古マンション取引事例
+  
+    - 全ての事例を人間が直接認識することは不可能
+
+## "個別事例分析"
+
+- 特徴的な事例を研究者が選別する
+
+- 最高価格で取引されている物件は
+
+```{r}
+Data[Data$Price == max(Data$Price),] |> 
+  select(
+    Price,
+    District,
+    Size
+  ) |> 
+  gt::gt() |> 
+  gt::fmt_auto()
+```
+
+- "杉並区の105平米の物件の取引価格は1億4000万円"　と主張できるか?
+
+## "個別事例分析"の問題点
+
+- 全く同じ属性を持つ物件は、他にも存在する
+
+```{r}
+Data[Data$Size == 105 & Data$District == "杉並",] |> 
+  select(
+    Price,
+    District,
+    Size
+  ) |> 
+  gt::gt() |> 
+  gt::fmt_auto()
+```
+
+- データから観察できない要因で、先の事例は大幅に上振れたのでは?
+
+## 要約計画
+
+- データにおいて観察できない要因の影響を減じるために、
+
+    - 何らかの要約を用いて、集団の”傾向"を論じる
+    
+        - 典型的な事例の報告、研究者の所見/印象、平均値、中央値、分散
+        
+- 恣意的分析を避けるために、データを見る前に、要約計画を立てることが重要
+
+    - 平均などの"自動計算"できる方法が有効
+
+## 実例: 平均取引価格
+
+```{r, dev='ragg_png'}
+Data |> 
+  filter(
+    year_2024 == 1
+  ) |> 
+  mutate(
+    MeanY = mean(Price),
+    N = n(),
+    .by = c(Size,District)
+  ) |> 
+  ggplot(
+    aes(
+      x = Size,
+      y = MeanY
+    )
+  ) +
+  theme_bw() +
+  geom_line() +
+  facet_wrap(~ District)
+```
+
+## 実例
+
+- 1事例のみで平均値を計算している組み合わせが24組存在 (例: 千代田区95平米)
+
+  - 上振れ/下振れの恐れが高い
+
+- さらなる要約が有益
+
+
+## 伝統的アプローチ
+
+1. **分析者**が、サブグループ (モデル) を定義する
+
+- 例: 練馬区かどうか $\times$ 部屋の広さが55平米以下かどうか
+
+2. サブグループの平均値を計算
+
+- 集計により偶然の上振れ/下振れの影響を軽減する
+
+## 伝統的アプローチ
+
+```{r,dev='ragg_png'}
+Data |> 
+  mutate(
+    Nerima = case_when(
+      District == "練馬" ~ 1,
+      .default = 0
+    ),
+    Size55 = case_when(
+      Size <= 55 ~ 1,
+      .default = 0
+    )
+  ) |> 
+  rpart::rpart(
+    Price ~ Nerima + Size55,
+    data = _,
+    control = rpart::rpart.control(
+      cp = 0
+    )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+## 伝統的アプローチの利点
+
+- データの偶然の上振れ、下振れを定量化できる (信頼区間)
+
+    - 一定の確率で、"無限大"の事例数で計算された平均値(母平均)を含む区間
+        
+    - 偶然生じた傾向か否かを区別でき、重大な意思決定への活用において、特に望ましい性質
+            
+## 例: 信頼区間
+
+```{r, dev='ragg_png'}
+Data |> 
+  mutate(
+    Group = case_when(
+      District == "練馬区" & Size <= 55 ~ "練馬 & 55平米以下",
+      District == "練馬区" & Size > 55 ~ "練馬 & 55平米以上",
+      District != "練馬区" & Size <= 55 ~ "練馬以外 & 55平米以下",
+      District != "練馬区" & Size > 55 ~ "練馬以外 & 55平米以上"
+    )
+  ) |> 
+  estimatr::lm_robust(
+    Price ~ 0 + Group,
+    data = _
+  ) |> 
+  generics::tidy() |> 
+  mutate(
+    term = str_sub(term,6)
+  ) |> 
+  ggplot(
+    aes(
+      y = term,
+      x = estimate,
+      xmin = conf.low,
+      xmax = conf.high
+    )
+  ) +
+  theme_bw() +
+  geom_pointrange() +
+  ylab("")
+```
+
+## モデルの設定
+
+- 事例の要約方法(モデル化)が属人的で、不透明
+
+  - 推定結果を大きく左右しうる
+
+    - 多くの教科書で直接的な言及を避けてきた問題
+    
+        - 「理論や背景をしっかり踏まえて、適切なモデル化を行うべし」以上の提案が難しい
+
+    - 機械学習の適切な活用が有効
+
+## 付論: モデルの設定
+
+- モデルを色々試すことで、分析者にとって"望ましい結果" (例: 明確な因果効果、存在しない格差の存在"証明"など)を、"捏造"できる
+
+    - Cherry-pick/p-huckなどと呼ばれる
+    
+- 無実の証明が難しい
+
+    - 疑われないようにするために、"複雑な分析"を避ける傾向
+    
+        - 例: どのような背景属性の組み合わさると、改装は大きな効果を持つか?
+
+## データ主導のモデリング
+
+- 決定木アルゴリズム: **データ**に最も適合するように、サブグループを定義する
+
+  - よりデータ主導
+
+  - 明確な基準("データへの適合")のもとで、要約方法を決定
+
+- 機械学習の得意分野
+
+## 例
+
+- 最大４グループに分けることは前提に、平均二乗誤差 $$(Y - モデルの予測値)^2のデータ上での平均値$$ を可能な限り削減するようにグループ分けを行う
+
+    - 近似的に削減する (Greedy-algorithm)
+
+## 実例
+
+```{r, dev='ragg_png'}
+Data |> 
+  rpart::rpart(
+    Price ~ Size + District + Distance + Tenure + RoomNumber + RoomK + RoomD + RoomL +
+      Kenpei + Youseki + Reform,
+    data = _,
+    control = rpart::rpart.control(
+      cp = 0,
+      maxdepth = 2
+    )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+## 例. 複雑なモデル
+
+- 機械学習を用いれば、より複雑なモデルも容易に生成できる
+
+- 例. 最大32グループに分ける
+
+## 複雑なモデル
+
+```{r, dev='ragg_png'}
+Data |> 
+  rpart::rpart(
+    Price ~ Size + District + Distance + Tenure + RoomNumber + RoomK + RoomD + RoomL +
+      Kenpei + Youseki + Reform,
+    data = _,
+    control = rpart::rpart.control(
+      cp = 0,
+      maxdepth = 4
+    )
+  ) |> 
+  rpart.plot::rpart.plot()
+```
+
+# Takeaway
+
+## 伝統的アプローチの利点と課題
+
+- **利点:** 研究者が設定するシンプルなモデルについて、データの偏りの影響を評価しながら、推定できる
+
+  - 無限大の事例数で推定した場合について、概ね正しい推測ができる(信頼区間)
+
+- **課題:** 予測性能は、研究者が設定したモデルに強く依存する
+
+## 機械学習の利点と課題
+
+- **利点:** データ主導でモデルを推定できる
+
+- **課題:** 予測性能は、研究者が設定したモデルに強く依存する
+
+- "何らかの予測モデル"は推定できるが、社会/市場分析への活用が難しい
+
+  - 人間行動など個人差が大きい変数を予測することは難しい
+
+  - データとの関係性が複雑なため、信頼区間などを計算することも難しい
+
+## 本講義の提案
+
+- 機械学習と伝統的な統計学/計量経済学/医療統計等の手法と"併用"する
+
+## 予習資料
+
+- 入門的な統計学 $+$ R
+
+  [Statistical Inference via Data Science](https://moderndive.com/v2/thinking-with-data.html)
+
+- ガッチリ機械学習
+
+  - [Introduction to Statistical Learning (Trevor Hastie, Robert Tibshirani, Jerome Friedman)](https://www.statlearning.com/)
+
+# R
+
+## R VS Python
+
+- Pythonと並ぶ、データ分析の人気言語
+
+    - 高い透明性と拡張性、再現可能性、無料、AI活用
+    
+    - 多様な統合開発環境(IDE)
+
+## 準備
+
+- [Posit cloudへの登録](https://youtu.be/yF6NxxvpzjE)
+
+    - クラウド環境でRを使用できる
+    
+    - ただし時間制限あり
+
+- [関心がある人は、自身のPCへRstudioをインストール](https://youtu.be/fDlXx8e5W78)
+
+    - 時間無制限
+
+## Example code
+
+- コードを実行する際には、(慣れるまでは)、以下の手順を徹底
+
+1. ctr + a を押し、全ての行を選択する
+
+2. ctr + enterを押し、実行する
+
+## Errorが出たら
+
+- 「errorは必ず起きる」、という心構えをもつ
+
+- 再現性の確認： 全ての行を再度実行
+
+    - コード実行しわすれ、がエラーの原因となることが多い
+
+- よくあるミス (大文字/小文字の区別、 コンマ)を確認
+
+    - 極力予測変換を活用し、タイポを減らす
+
+- 解決できない場合は、コード全体をチェット欄にコピペしてください

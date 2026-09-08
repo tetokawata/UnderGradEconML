@@ -1,0 +1,60 @@
+---
+title: "Double/Debiased Machine Learning"
+subtitle: "機械学習入門"
+author:
+  - name: 川田恵介
+format: html
+bibliography: "ref.bib"
+execute: 
+  echo: false
+  warning: false
+  message: false
+  eval: true
+---
+
+# バランス後の比較: 復習
+
+```{r}
+#| echo: true
+set.seed(111)
+library(ddml)
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv") |> 
+  filter(TradeY == 2021) |> 
+  mutate(CBD = if_else(Area == "CBD",1,0)) |> 
+  select(CBD, Price,Size,Distance,Tenure)
+
+Data |> 
+  write_csv("Public/Homework3.csv")
+
+estimatr::lm_robust(Price ~ CBD, Data)
+
+ddml_plm(
+  y = Data$Price,
+  D = Data$CBD,
+  X = Data |> 
+    select(Size,Distance,Tenure) |> 
+    data.matrix(),
+  list(
+    list(fun = ols),
+    list(fun = mdl_ranger)),
+  shortstack = TRUE,
+  silent = TRUE
+  ) |> 
+  summary()
+
+
+ddml_plm(
+  y = Data$Price,
+  D = Data$CBD,
+  X = Data |> 
+    select(Size,Distance,Tenure) |> 
+    data.matrix(),
+  list(
+    list(fun = ols)),
+  shortstack = TRUE,
+  silent = TRUE
+  ) |> 
+  summary()
+```

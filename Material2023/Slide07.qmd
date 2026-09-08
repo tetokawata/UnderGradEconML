@@ -1,0 +1,405 @@
+---
+title: "記述統計量の推論"
+subtitle: "経済学のための機械学習入門"
+author: "川田恵介"
+format: 
+  revealjs:
+    chalkboard: true
+    html-math-method: katex
+    slide-number: true
+    incremental: true
+execute: 
+  warning: false
+  message: false
+  eval: true
+  echo: false
+---
+
+# 特定の変数間の関係性理解
+
+
+```{r}
+pacman::p_load(
+  tidyverse,
+  SuperLearner,
+  rpart,
+  ranger,
+  patchwork,
+  magrittr
+)
+
+SimData <- function(i,n){
+  set.seed(i)
+  TempData <- tibble(
+    X = runif(n,-2,2),
+    D = if_else(X <= 1 & X >= -1,
+                sample(0:1,n,replace = TRUE,prob = c(0.1,0.9)),
+                sample(0:1,n,replace = TRUE,prob = c(0.9,0.1))),
+    U = rnorm(n,0,10)
+    ) |> 
+    mutate(TrueY = X^2 + D) |> 
+    mutate(Y = TrueY + U)
+  return(TempData)
+}
+```
+
+- $X$ が同じようなグループ内で、 $D$ と $Y$の関係性を推定する
+
+    - 経済学における中心的な実証課題
+
+## 応用例
+
+- 同一学歴 $(X)$ 内男女間 $(D)$ 賃金格差 $(Y)$
+
+- 最低賃金 $(D)$ が就業率 $(Y)$に与える因果効果の推定
+
+    - $X=$ 地域の経済状態など
+
+- キャッシュバックキャンペーン $(D)$ が、新規携帯電話契約 $(Y)$ に与える因果効果推定
+
+    - $X=$ 個人の背景
+
+## 数値例
+
+- 「格闘ゲームをプレイした経験間で、主観的幸福度はどの程度異なるのか？」
+
+    - 年齢と主観的幸福度、格闘ゲームのプレイ経験には強い相関がされるので、"コントロール"
+    
+- 母集団
+
+    - 格闘ゲームのプレイ経験があるグループの方が、主観的幸福度は高い
+    
+    - 40歳前後が最も格闘ゲームのプレイ経験は高い
+    
+    - 年齢と主観的幸福度の間には、U字の関係がある
+
+## 数値例
+
+```{r}
+SimData(1,200) |> 
+  ggplot(
+    aes(
+      x = X,
+      y = Y,
+      color = D |> factor()
+    )
+  ) +
+  theme_bw() +
+  geom_point()
+```
+
+## OLS推定
+
+- 真の関係性は、 $Y\sim D + X^2$
+
+- $Y\sim\beta_0+\beta_1D + \beta_2 X$ を回帰
+
+    - どのようなBLPを推定することになるのか?
+
+## 数値例
+
+```{r}
+N <- 20000
+FigPop <- SimData(1,N) |> 
+  mutate(
+    D = factor(D)
+  ) |> 
+  mutate(
+    Pred = lm(TrueY ~ D + X, SimData(1,N)) |> predict(),
+  ) |> 
+  ggplot(
+    aes(
+      x = X,
+      color = D,
+      group = D
+    )
+  ) +
+  theme_bw() +
+  geom_line(
+    aes(
+      y = TrueY,
+      linetype = "Population"
+    )
+  ) +
+  geom_line(
+    aes(
+      y = Pred,
+      linetype = "BLP"
+    )
+  ) +
+  ylab("E[Y|D,X]")
+
+FigPop
+```
+
+
+## 数値例
+
+```{r}
+N <- 5000
+
+FigPop <- FigPop +
+  theme(
+    legend.position = "none"
+  )
+DrawFig <- function(i,N){
+  TempFig <- SimData(i,N) |> 
+    mutate(
+      D = factor(D)
+      ) |> 
+    mutate(
+      Pred = lm(Y ~ D + X, SimData(i,N)) |> predict(),
+    ) |> 
+  ggplot(
+    aes(
+      x = X,
+      color = D,
+      group = D
+    )
+  ) +
+  theme_bw() +
+  geom_line(
+    aes(
+      y = Pred,
+      linetype = "OLS"
+    )
+  ) +
+    theme(
+      legend.position = "none"
+    ) +
+    ylab("") +
+    ylim(0,5)
+  return(TempFig)
+}
+
+FigPop | (DrawFig(1,N) + DrawFig(2,N))/(DrawFig(3,N) + DrawFig(4,N))
+```
+
+## 数値例: 信頼区間
+
+```{r}
+SimCI <- function(i,N){
+  TempResult <- SimData(i,N) |> 
+    mutate(
+      D = factor(D)
+      ) %$%
+    estimatr::lm_robust(
+      Y ~ D + X
+    ) |> 
+    generics::tidy() |> 
+    filter(term == "D1") |> 
+    mutate(
+      ID = i,
+      N = N
+    )
+  return(TempResult)
+}
+
+map_dfr(1:100, function(i){SimCI(i,500)}) |> 
+  bind_rows(
+    map_dfr(1:100, function(i){SimCI(i,5000)})
+  ) |> 
+  mutate(
+    Error = if_else(
+      conf.low >= 1 |
+        conf.high <= 1,
+      "Error",
+      "Not Error"
+    )
+  ) |> 
+  ggplot(
+    aes(
+      x = estimate,
+      xmin = conf.low,
+      xmax = conf.high,
+      y = ID,
+      color = Error
+    )
+  ) +
+  theme_bw() +
+  geom_vline(
+    xintercept = 1
+  ) +
+  geom_pointrange() +
+  facet_grid(~ N)
+```
+
+
+# 集計した条件付き平均差
+
+## 条件付き平均差
+
+- $$\tau_P(X)=E_P[Y|D=1,X]-E_P[Y|D=0,X]$$
+
+- 事例数が十分あり、かつ $X$ の取りうる値が限られていれば、サブサンプル平均差として推定できる
+
+    - 多くの応用例で、難しい
+    
+## 集計した条件付き平均差
+
+- $$E_P[\tau_P(X)]$$
+
+- 事例数が限られていたとしても、推定できる可能性は高い
+
+## 線形モデル
+
+- $E_P[Y|D,X]\simeq \beta_0 + \tau_P\times D + \beta_1\times X_1+..+\beta_L\times X_L$ を推定する
+
+- 以下のどちらかの条件が成り立てばOK
+
+    - $E_P[Y|D,X]= \beta_0 + \tau_P\times D + \beta_1\times X_1+..+\beta_L\times X_L$ となるような $\tau_P,\beta$ が存在する
+    
+        - モデルが正しく定式化されている
+        
+    - $D$ がランダムに決定されている
+
+## FWL定理
+
+- **F**risch–**W**augh–**L**ovell定理
+
+- OLSの推定結果は以下の推定結果と一致する
+
+1. $Y\sim X_1,..,X_L$ , $D\sim X_1,..,X_L$ をOLSで推定し、 "予測モデル" $g_Y(X),g_D(X)$ を獲得
+
+2. 予測誤差同士をOLSで推定する $Y-g_Y(X) \sim D-g_D(X)$
+
+3. 係数値 $= D$ の係数値
+
+## Well specified model
+
+- $g_Y$ または $g_D$ がwell-specifiedであれば、 $D$ は条件付き平均差の優れた推定値
+
+    - 信頼区間を計算可能
+    
+- Well-specifiedなモデルを設定するのは、非常に難しい
+
+    - 機械学習の活用
+
+## Partialling-out 推定
+
+1. $Y,D$ の予測モデル $g_Y(X),g_D(X)$ を、**何らかの方法**で交差推定する
+
+2. 予測誤差 $Y-g_Y(X),D-g_d(X)$ を単回帰する ($Y-g_Y(X)\sim D-g_D(X)$)
+
+3. 単回帰の係数 $=$ 条件付き平均差の集計値
+
+    - "高性能"なアルゴリズムを使用できていれば、OK
+
+# 補論: 機械学習の安易な応用の問題点
+
+- 古典的(かつ批判の多い)アイディア
+
+1. $D,X$ から $Y$ の予測モデル $(g_Y(D,X))$ を作る
+
+2. 予測値の差 $g_Y(1,X) - g_Y(0,X)$ の平均値を推定値とする
+
+## 性質: 小規模サンプル
+
+```{r, dev='ragg_png'}
+tibble(
+  Est = rnorm(100,0,2),
+  ID = c(1:100),
+  Method = "安直な応用"
+       ) |> 
+  bind_rows(
+    tibble(Est = rnorm(100,4.5,2),
+       ID = c(1:100),
+       Method = "Partialling-out"
+       )
+  ) |> 
+  bind_rows(
+    tibble(Est = rnorm(100,5,2),
+       ID = c(1:100),
+       Method = "Well-specified"
+       )
+  ) |> 
+  bind_rows(
+    tibble(Est = rnorm(100,1,2),
+       ID = c(1:100),
+       Method = "Miss-specified"
+       )
+  ) |> 
+  ggplot(
+    aes(
+      x = Est,
+      y = ID
+    )
+  ) +
+  theme_bw() +
+  geom_vline(xintercept = 5) +
+  geom_point() +
+  facet_wrap(~Method,ncol=2) +
+  xlim(-10,15)
+```
+
+
+## 性質: 大規模サンプル
+
+```{r, dev='ragg_png'}
+tibble(
+  Est = rnorm(100,4,0.1),
+  ID = c(1:100),
+  Method = "安直な応用"
+       ) |> 
+  bind_rows(
+    tibble(Est = rnorm(100,5,0.2),
+       ID = c(1:100),
+       Method = "Partialling-out"
+       )
+  ) |> 
+  bind_rows(
+    tibble(Est = rnorm(100,5,0.1),
+       ID = c(1:100),
+       Method = "Well-specified"
+       )
+  ) |> 
+  bind_rows(
+    tibble(Est = rnorm(100,1,0.1),
+       ID = c(1:100),
+       Method = "Miss-specified"
+       )
+  ) |> 
+  ggplot(
+    aes(
+      x = Est,
+      y = ID
+    )
+  ) +
+  theme_bw() +
+  geom_vline(xintercept = 5) +
+  geom_point() +
+  facet_wrap(~Method,ncol=2) +
+  xlim(-10,15)
+```
+
+## 収束
+
+- 現実的な事例数の元で、真の値(平均差)を中心とした正規分布で近似できることを保証したい
+
+    - OLS: Well-specifiedでないかぎり、中心が常にズレる
+    
+    - 安易な応用: 極めて大きいサンプルサイズがないと、中心がズレる
+
+- このためPartialling-outが推奨される
+
+# まとめ
+
+- BLP $\neq$ 条件付き平均差
+
+    - 一般にOLSを条件付き平均差の推定に使うことは不適切
+    
+    - 実験データに近いのであれば、大きな問題はない
+    
+- 教師付き学習も、収束の遅さが問題
+
+- 推奨はPartialling-out推定
+
+## 補論: OLS
+
+- OLSは引き続き用いられる
+
+    - ランダム化実験データであれば、 $D$ は $X$ と独立して決定されているので、大きな問題は起きない
+    
+    
+- 明らかに相関しているデータで同じ処理を行うと問題
+

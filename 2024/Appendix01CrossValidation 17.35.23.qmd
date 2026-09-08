@@ -1,0 +1,290 @@
+---
+title: "補論: 交差推定"
+subtitle: "機械学習入門"
+author:
+  - name: 川田恵介
+format:
+  revealjs:
+    incremental: true 
+    slide-number: true
+    html-math-method: katex
+  pdf:
+    pdf-engine: lualatex
+    documentclass: ltjsarticle 
+    toc: true
+    toc-depth: 3
+    number-sections: true
+execute:
+  echo: false
+  eval: true
+  warning: false
+  message: false
+---
+
+```{r}
+#| eval: false
+library(tidyverse)
+
+Data = read_csv("Public/Example.csv") |> 
+  mutate(
+    D = if_else(
+      TradeY == 2023,
+      1,
+      0
+    ),
+    Group = str_c(
+      Size,
+      District,
+      Distance,
+      Tenure,
+      sep = "_")
+  )
+
+Data$ResY = fixest::feols(
+  Price ~ Group, 
+  Data,
+  se = "standard")$residuals
+
+Data$ResD = fixest::feols(
+  D ~ Group, 
+  Data,
+  se = "standard")$residuals
+
+Data |> 
+  write_csv("TempData.csv")
+```
+
+## ２度づけ回避
+
+- ある事例の予測値は、その事例を含まないデータから推定する必要がある
+
+- ここまでの方法: データを２分割し、片方で予測モデルを推定し、残りでOLS推定を行う
+
+  - 問題点: 半分のデータしか、OLSに使えず、推定精度が悪化する
+
+  - 改善策: 交差推定
+
+## 交差推定
+
+0. データを細かく分割 (第1,..,10 サブグループなど)
+
+1. 第1サブグループ**以外**で推定して、第1サブグループの予測値を算出
+
+2. 第2...サブグループについて、繰り返し、全事例に対して予測値を算出
+
+## 数値例: 3分割
+
+```{r}
+library(tidyverse)
+
+SimData <- function(n,seed) {
+  set.seed(seed)
+  Temp <- tibble(
+    StationDistance = sample(1:9,n,replace = TRUE),
+    Price = StationDistance + rnorm(n,0,10)
+  )
+  return(Temp)
+}
+
+
+PopData <- SimData(9,1) |> 
+  mutate(
+    Group = sample(rep(1:3,each = 9/3)) |> 
+      factor()
+  )
+
+X = model.matrix(
+  ~ 0 + poly(StationDistance,5),
+  PopData
+)
+
+Y = PopData$Price
+
+PopData
+```
+
+## 数値例: Step 1
+
+```{r}
+Target <- 1
+
+OLS = lm(Price ~ StationDistance,
+         PopData,
+         subset = Group != Target) |> 
+  predict(PopData)
+
+PopData$OLS = case_when(
+  PopData$Group == Target ~ OLS,
+  .default = NA
+)
+
+RF = ranger::ranger(Price ~ StationDistance,
+         PopData[PopData$Group != Target,]) |> 
+  predict(PopData) |> 
+  magrittr::extract2("predictions")
+
+PopData$RandomForest = case_when(
+  PopData$Group == Target ~ RF,
+  .default = NA
+)
+
+PopData
+```
+
+## 数値例: Step 2
+
+```{r}
+Target <- 2
+
+OLS = lm(Price ~ StationDistance,
+         PopData,
+         subset = Group != Target) |> 
+  predict(PopData)
+
+PopData$OLS = case_when(
+  PopData$Group == Target ~ OLS,
+  .default = PopData$OLS
+)
+
+RF = ranger::ranger(Price ~ StationDistance,
+         PopData[PopData$Group != Target,]) |> 
+  predict(PopData) |> 
+  magrittr::extract2("predictions")
+
+PopData$RandomForest = case_when(
+  PopData$Group == Target ~ RF,
+  .default = PopData$RandomForest
+)
+
+PopData
+```
+
+## 数値例: Step 3
+
+```{r}
+Target <- 3
+
+OLS = lm(Price ~ StationDistance,
+         PopData,
+         subset = Group != Target) |> 
+  predict(PopData)
+
+PopData$OLS = case_when(
+  PopData$Group == Target ~ OLS,
+  .default = PopData$OLS
+)
+
+RF = ranger::ranger(Price ~ StationDistance,
+         PopData[PopData$Group != Target,]) |> 
+  predict(PopData) |> 
+  magrittr::extract2("predictions")
+
+PopData$RandomForest = case_when(
+  PopData$Group == Target ~ RF,
+  .default = PopData$RandomForest
+)
+
+PopData
+```
+
+## Stacking
+
+- 交差推定からStackingも可能
+
+```{r}
+#| echo: true
+lm(Price ~ OLS + RandomForest, PopData)
+```
+
+## 実装
+
+- 以上の手続きはddml packageで実装可能
+
+## 例
+
+```{r}
+Data = readr::read_csv("TempData.csv")
+```
+
+
+```{r}
+#| echo: true
+library(tidyverse)
+library(ddml)
+
+Y = Data$Price
+D = Data$D
+X = select(
+  Data,
+  Size,
+  District,
+  Distance,
+  Tenure)
+```
+
+## 例
+
+```{r}
+#| echo: true
+Model = ddml_plm(
+  y = Y,
+  D = D,
+  X = data.matrix(X),
+  learners = list(
+    list(fun = ols),
+    list(fun = mdl_glmnet),
+    list(fun = mdl_ranger)
+  ),
+  shortstack = TRUE,
+  silent = TRUE)
+
+summary(Model)
+```
+
+## 比較
+
+```{r}
+estimatr::lm_robust(Model$ols_fit$model$y_r ~ Model$ols_fit$model$D_r) |> 
+  generics::tidy() |> 
+  filter(
+    term == "Model$ols_fit$model$D_r"
+  ) |> 
+  mutate(
+    Method = "R learner"
+  ) |> 
+  bind_rows(
+    estimatr::lm_robust(ResY ~ ResD,read_csv("TempData.csv")) |> 
+      generics::tidy() |> 
+      filter(
+        term == "ResD"
+        ) |> 
+      mutate(
+        Method = "OLS"
+        )
+    ) |> 
+  ggplot(
+    aes(
+      y = Method,
+      x = estimate,
+      xmin = conf.low,
+      xmax = conf.high
+    )
+  ) +
+  theme_bw() +
+  geom_pointrange()
+```
+
+## 例
+
+```{r}
+#| echo: true
+library(estimatr)
+
+HatY = Model$ols_fit$model$y_r
+HatD = Model$ols_fit$model$D_r
+
+lm_robust(
+  HatY ~ 0 + HatD + 
+    HatD:scale(Size) + HatD:scale(Tenure) + HatD:scale(Distance),
+  Data)
+```
