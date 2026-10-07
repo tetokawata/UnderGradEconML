@@ -1,6 +1,8 @@
+set.seed(42) # set seed
+
 library(tidyverse)
 
-df = read_csv("example.csv")
+df = read_csv("example.csv") # load data
 
 # Data split
 
@@ -14,9 +16,16 @@ test = rsample::testing(group)
 
 lasso = hdm::rlasso(price ~ ., train, post = FALSE)
 
+ols = lm(price ~ ., train)
+
 # Test
 
+
 test$lasso = predict(lasso, test)
+
+test$ols = predict(ols,test)
+
+mean((test$price - test$ols)^2)
 
 mean((test$price - test$lasso)^2)
 
