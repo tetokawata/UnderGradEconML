@@ -40,7 +40,16 @@ hdm::rlasso(
   df
 )
 
+Y <- df$price # ctr + Enter
+D <- df$year
 
+X <- model.matrix(~ 0 + size + tenure + distance + district +
+               I(size^2) + I(tenure^2) + I(distance^2), df) 
 
+model <- hdm::rlassoEffect(y = Y, d = D, x = X)
+
+confint(model)
+
+model$selection.index
 # ctr + A -> ctr + Enter
 # ctr + S
